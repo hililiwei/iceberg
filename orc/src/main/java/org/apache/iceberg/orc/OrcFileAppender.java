@@ -20,7 +20,6 @@
 package org.apache.iceberg.orc;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.List;
@@ -31,7 +30,6 @@ import org.apache.hadoop.fs.Path;
 import org.apache.iceberg.Metrics;
 import org.apache.iceberg.MetricsConfig;
 import org.apache.iceberg.Schema;
-import org.apache.iceberg.common.DynFields;
 import org.apache.iceberg.exceptions.RuntimeIOException;
 import org.apache.iceberg.hadoop.HadoopOutputFile;
 import org.apache.iceberg.io.FileAppender;
@@ -43,7 +41,6 @@ import org.apache.orc.Reader;
 import org.apache.orc.StripeInformation;
 import org.apache.orc.TypeDescription;
 import org.apache.orc.Writer;
-import org.apache.orc.impl.writer.TreeWriter;
 import org.apache.orc.storage.ql.exec.vector.VectorizedRowBatch;
 
 /**

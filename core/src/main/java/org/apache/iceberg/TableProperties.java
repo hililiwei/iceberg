@@ -111,6 +111,12 @@ public class TableProperties {
   public static final String DELETE_AVRO_COMPRESSION = "write.delete.avro.compression-codec";
   public static final String AVRO_COMPRESSION_DEFAULT = "gzip";
 
+  public static final String ORC_STRIPE_SIZE_BYTES = "write.orc.stripe-size-bytes";
+  public static final String ORC_STRIPE_SIZE_BYTES_DEFAULT = "67108864"; // 64L * 1024 * 1024
+
+  public static final String ORC_BLOCK_SIZE_BYTES = "write.orc.block-size-bytes";
+  public static final String ORC_BLOCK_SIZE_BYTES_DEFAULT = "268435456"; // 256L * 1024 * 1024
+
   public static final String SPLIT_SIZE = "read.split.target-size";
   public static final long SPLIT_SIZE_DEFAULT = 128 * 1024 * 1024; // 128 MB
 

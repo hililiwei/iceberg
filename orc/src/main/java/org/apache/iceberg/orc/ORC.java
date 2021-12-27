@@ -37,6 +37,7 @@ import org.apache.iceberg.Schema;
 import org.apache.iceberg.SortOrder;
 import org.apache.iceberg.StructLike;
 import org.apache.iceberg.Table;
+import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.data.orc.GenericOrcWriter;
 import org.apache.iceberg.data.orc.GenericOrcWriters;
 import org.apache.iceberg.deletes.EqualityDeleteWriter;
@@ -145,6 +146,7 @@ public class ORC {
 
     public <D> FileAppender<D> build() {
       Preconditions.checkNotNull(schema, "Schema is required");
+      parseWriterCustomizedConf(conf);
       return new OrcFileAppender<>(schema,
           this.file, createWriterFunc, conf, metadata,
           conf.getInt(VECTOR_ROW_BATCH_SIZE, VectorizedRowBatch.DEFAULT_SIZE), metricsConfig);
@@ -510,5 +512,15 @@ public class ORC {
       readerOptions.filesystem(((HadoopInputFile) file).getFileSystem());
     }
     return newFileReader(file.location(), readerOptions);
+  }
+
+  private static void parseWriterCustomizedConf(Configuration conf) {
+    conf.set(
+        OrcConf.STRIPE_SIZE.name(),
+        conf.get(TableProperties.ORC_STRIPE_SIZE_BYTES, TableProperties.ORC_STRIPE_SIZE_BYTES_DEFAULT));
+
+    conf.set(OrcConf.BLOCK_SIZE.name(), conf.get(
+        TableProperties.ORC_BLOCK_SIZE_BYTES,
+        TableProperties.ORC_BLOCK_SIZE_BYTES_DEFAULT));
   }
 }

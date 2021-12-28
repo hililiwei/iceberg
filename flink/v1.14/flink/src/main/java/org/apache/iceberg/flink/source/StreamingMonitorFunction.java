@@ -67,8 +67,9 @@ public class StreamingMonitorFunction extends RichSourceFunction<FlinkInputSplit
   private transient SourceContext<FlinkInputSplit> sourceContext;
   private transient Table table;
   private transient ListState<Long> lastSnapshotIdState;
+  private transient boolean localityPreferred;
 
-  public StreamingMonitorFunction(TableLoader tableLoader, ScanContext scanContext) {
+  public StreamingMonitorFunction(TableLoader tableLoader, ScanContext scanContext, boolean localityPreferred) {
     Preconditions.checkArgument(scanContext.snapshotId() == null,
         "Cannot set snapshot-id option for streaming reader");
     Preconditions.checkArgument(scanContext.asOfTimestamp() == null,
@@ -77,6 +78,7 @@ public class StreamingMonitorFunction extends RichSourceFunction<FlinkInputSplit
         "Cannot set end-snapshot-id option for streaming reader");
     this.tableLoader = tableLoader;
     this.scanContext = scanContext;
+    this.localityPreferred = localityPreferred;
   }
 
   @Override
@@ -140,7 +142,7 @@ public class StreamingMonitorFunction extends RichSourceFunction<FlinkInputSplit
         newScanContext = scanContext.copyWithAppendsBetween(lastSnapshotId, snapshotId);
       }
 
-      FlinkInputSplit[] splits = FlinkSplitGenerator.createInputSplits(table, newScanContext);
+      FlinkInputSplit[] splits = FlinkSplitGenerator.createInputSplits(table, newScanContext, localityPreferred);
       for (FlinkInputSplit split : splits) {
         sourceContext.collect(split);
       }

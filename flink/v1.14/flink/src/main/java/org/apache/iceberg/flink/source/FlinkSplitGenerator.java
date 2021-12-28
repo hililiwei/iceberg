@@ -27,20 +27,37 @@ import org.apache.iceberg.Table;
 import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.TableScan;
 import org.apache.iceberg.expressions.Expression;
+import org.apache.iceberg.hadoop.Util;
 import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
+import org.apache.iceberg.util.Tasks;
+import org.apache.iceberg.util.ThreadPools;
 
 class FlinkSplitGenerator {
   private FlinkSplitGenerator() {
   }
 
-  static FlinkInputSplit[] createInputSplits(Table table, ScanContext context) {
+  static FlinkInputSplit[] createInputSplits(Table table, ScanContext context, boolean localityPreferred) {
     List<CombinedScanTask> tasks = tasks(table, context);
     FlinkInputSplit[] splits = new FlinkInputSplit[tasks.size()];
-    for (int i = 0; i < tasks.size(); i++) {
-      splits[i] = new FlinkInputSplit(i, tasks.get(i));
-    }
+
+    Tasks.range(tasks.size())
+        .stopOnFailure()
+        .executeWith(localityPreferred ? ThreadPools.getWorkerPool() : null)
+        .run(index -> {
+          CombinedScanTask task = tasks.get(index);
+          String[] hosts = new String[0];
+          if (localityPreferred) {
+            hosts = Util.blockLocations(table.io(), task);
+          }
+          splits[index] = new FlinkInputSplit(index, task, hosts.length > 0 ? hosts : null);
+        });
+
     return splits;
+  }
+
+  static FlinkInputSplit[] createInputSplits(Table table, ScanContext context) {
+    return createInputSplits(table, context, false);
   }
 
   private static List<CombinedScanTask> tasks(Table table, ScanContext context) {

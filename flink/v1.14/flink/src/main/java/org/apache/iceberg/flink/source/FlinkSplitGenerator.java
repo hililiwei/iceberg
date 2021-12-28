@@ -21,7 +21,16 @@ package org.apache.iceberg.flink.source;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
+import org.apache.flink.core.fs.BlockLocation;
+import org.apache.flink.core.fs.FileStatus;
+import org.apache.flink.core.fs.FileSystem;
+import org.apache.flink.core.fs.Path;
+import org.apache.flink.runtime.fs.hdfs.HadoopFileSystem;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hdfs.DistributedFileSystem;
 import org.apache.iceberg.CombinedScanTask;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableProperties;
@@ -29,6 +38,7 @@ import org.apache.iceberg.TableScan;
 import org.apache.iceberg.expressions.Expression;
 import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
+import org.apache.iceberg.relocated.com.google.common.collect.Sets;
 
 class FlinkSplitGenerator {
   private FlinkSplitGenerator() {
@@ -38,7 +48,22 @@ class FlinkSplitGenerator {
     List<CombinedScanTask> tasks = tasks(table, context);
     FlinkInputSplit[] splits = new FlinkInputSplit[tasks.size()];
     for (int i = 0; i < tasks.size(); i++) {
-      splits[i] = new FlinkInputSplit(i, tasks.get(i));
+      Set<String> hosts = Sets.newHashSet();
+      CombinedScanTask combinedScanTask = tasks.get(i);
+      combinedScanTask.files().forEach(fileScanTask -> {
+        try {
+          final FileSystem fs = new HadoopFileSystem(DistributedFileSystem.get(new Configuration()));
+          FileStatus fileStatus = fs.getFileStatus(new Path(fileScanTask.file().path().toString()));
+          BlockLocation[] blockLocations = fs.getFileBlockLocations(fileStatus, 0, fileStatus.getLen());
+          for (BlockLocation block : blockLocations) {
+            hosts.addAll(Arrays.asList(block.getHosts()));
+          }
+        } catch (IOException e) {
+          throw new UncheckedIOException("Failed to create input splits ", e);
+        }
+      });
+      splits[i] =
+          new FlinkInputSplit(i, combinedScanTask, hosts.size() > 0 ? hosts.toArray(new String[hosts.size()]) : null);
     }
     return splits;
   }

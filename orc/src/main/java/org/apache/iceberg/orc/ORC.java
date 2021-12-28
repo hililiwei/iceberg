@@ -146,7 +146,13 @@ public class ORC {
 
     public <D> FileAppender<D> build() {
       Preconditions.checkNotNull(schema, "Schema is required");
-      parseWriterCustomizedConf(conf);
+
+      conf.setLong(
+          OrcConf.STRIPE_SIZE.name(),
+          conf.getLong(TableProperties.ORC_STRIPE_SIZE_BYTES, TableProperties.ORC_STRIPE_SIZE_BYTES_DEFAULT));
+      conf.setLong(
+          OrcConf.BLOCK_SIZE.name(),
+          conf.getLong(TableProperties.ORC_BLOCK_SIZE_BYTES, TableProperties.ORC_BLOCK_SIZE_BYTES_DEFAULT));
       return new OrcFileAppender<>(schema,
           this.file, createWriterFunc, conf, metadata,
           conf.getInt(VECTOR_ROW_BATCH_SIZE, VectorizedRowBatch.DEFAULT_SIZE), metricsConfig);
@@ -512,15 +518,5 @@ public class ORC {
       readerOptions.filesystem(((HadoopInputFile) file).getFileSystem());
     }
     return newFileReader(file.location(), readerOptions);
-  }
-
-  private static void parseWriterCustomizedConf(Configuration conf) {
-    conf.set(
-        OrcConf.STRIPE_SIZE.name(),
-        conf.get(TableProperties.ORC_STRIPE_SIZE_BYTES, TableProperties.ORC_STRIPE_SIZE_BYTES_DEFAULT));
-
-    conf.set(OrcConf.BLOCK_SIZE.name(), conf.get(
-        TableProperties.ORC_BLOCK_SIZE_BYTES,
-        TableProperties.ORC_BLOCK_SIZE_BYTES_DEFAULT));
   }
 }

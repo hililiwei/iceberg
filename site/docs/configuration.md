@@ -41,8 +41,8 @@ Iceberg tables support table properties to configure table behavior, like the de
 | write.parquet.compression-codec    | gzip               | Parquet compression codec                          |
 | write.parquet.compression-level    | null               | Parquet compression level                          |
 | write.avro.compression-codec       | gzip               | Avro compression codec                             |
-| write.orc.stripe-size-bytes | 67108864(64 MB) | Define the default ORC stripe size, in bytes. |
-| write.orc.block-size-bytes | 268435456(256 MB) | Define the default file system block size for ORC files. |
+| write.orc.stripe-size-bytes        | 67108864(64 MB)    | Define the default ORC stripe size, in bytes.      |
+| write.orc.block-size-bytes         | 268435456(256 MB)  | Define the default file system block size for ORC files. |
 | write.location-provider.impl       | null               | Optional custom implemention for LocationProvider  |
 | write.metadata.compression-codec   | none               | Metadata compression codec; none or gzip           |
 | write.metadata.metrics.default     | truncate(16)       | Default metrics mode for all columns in the table; none, counts, truncate(length), or full |
@@ -53,7 +53,7 @@ Iceberg tables support table properties to configure table behavior, like the de
 | write.summary.partition-limit      | 0                  | Includes partition-level summary stats in snapshot summaries if the changed partition count is less than this limit |
 | write.metadata.delete-after-commit.enabled | false      | Controls whether to delete the oldest version metadata files after commit |
 | write.metadata.previous-versions-max       | 100        | The max number of previous version metadata files to keep before deleting after commit |
-| write.spark.fanout.enabled       | false        | Enables Partitioned-Fanout-Writer writes in Spark |
+| write.spark.fanout.enabled         | false              | Enables Partitioned-Fanout-Writer writes in Spark |
 
 ### Table behavior properties
 

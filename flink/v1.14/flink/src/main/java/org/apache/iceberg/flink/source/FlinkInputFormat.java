@@ -22,6 +22,7 @@ package org.apache.iceberg.flink.source;
 import java.io.IOException;
 import org.apache.flink.api.common.io.DefaultInputSplitAssigner;
 import org.apache.flink.api.common.io.InputFormat;
+import org.apache.flink.api.common.io.LocatableInputSplitAssigner;
 import org.apache.flink.api.common.io.RichInputFormat;
 import org.apache.flink.api.common.io.statistics.BaseStatistics;
 import org.apache.flink.configuration.Configuration;
@@ -46,16 +47,18 @@ public class FlinkInputFormat extends RichInputFormat<RowData, FlinkInputSplit> 
   private final EncryptionManager encryption;
   private final ScanContext context;
   private final RowDataFileScanTaskReader rowDataReader;
+  private final boolean localityPreferred;
 
   private transient DataIterator<RowData> iterator;
   private transient long currentReadCount = 0L;
 
   FlinkInputFormat(TableLoader tableLoader, Schema tableSchema, FileIO io, EncryptionManager encryption,
-                   ScanContext context) {
+                   ScanContext context, boolean localityPreferred) {
     this.tableLoader = tableLoader;
     this.io = io;
     this.encryption = encryption;
     this.context = context;
+    this.localityPreferred = localityPreferred;
     this.rowDataReader = new RowDataFileScanTaskReader(tableSchema,
         context.project(), context.nameMapping(), context.caseSensitive());
   }
@@ -77,13 +80,15 @@ public class FlinkInputFormat extends RichInputFormat<RowData, FlinkInputSplit> 
     tableLoader.open();
     try (TableLoader loader = tableLoader) {
       Table table = loader.loadTable();
-      return FlinkSplitGenerator.createInputSplits(table, context);
+      return FlinkSplitGenerator.createInputSplits(table, context, localityPreferred);
     }
   }
 
   @Override
   public InputSplitAssigner getInputSplitAssigner(FlinkInputSplit[] inputSplits) {
-    return new DefaultInputSplitAssigner(inputSplits);
+    return localityPreferred ?
+        new DefaultInputSplitAssigner(inputSplits) :
+        new LocatableInputSplitAssigner(inputSplits);
   }
 
   @Override

@@ -19,14 +19,10 @@
 
 package org.apache.iceberg.flink;
 
-
 import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.ConfigOptions;
 
 public class FlinkConfigOptions {
-
-  private FlinkConfigOptions() {
-  }
 
   public static final ConfigOption<Boolean> TABLE_EXEC_ICEBERG_INFER_SOURCE_PARALLELISM =
       ConfigOptions.key("table.exec.iceberg.infer-source-parallelism")
@@ -40,4 +36,14 @@ public class FlinkConfigOptions {
           .intType()
           .defaultValue(100)
           .withDescription("Sets max infer parallelism for source operator.");
+
+  public static final ConfigOption<Boolean> TABLE_EXEC_ICEBERG_INFER_SOURCE_LOCALITY =
+      ConfigOptions.key("table.exec.iceberg.infer-source-locality")
+          .booleanType()
+          .noDefaultValue()
+          .withDescription("Controls whether to report locality information to Flink while allocating input " +
+              "partitions.");
+
+  private FlinkConfigOptions() {
+  }
 }

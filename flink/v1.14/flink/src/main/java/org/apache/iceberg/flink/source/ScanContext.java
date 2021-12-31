@@ -68,9 +68,6 @@ class ScanContext implements Serializable {
   private static final ConfigOption<Duration> MONITOR_INTERVAL =
       ConfigOptions.key("monitor-interval").durationType().defaultValue(Duration.ofSeconds(10));
 
-  private static final ConfigOption<Boolean> LOCALITY  =
-      ConfigOptions.key("locality").booleanType().defaultValue(null);
-
   private final boolean caseSensitive;
   private final boolean locality;
   private final Long snapshotId;
@@ -321,7 +318,6 @@ class ScanContext implements Serializable {
           .splitLookback(config.get(SPLIT_LOOKBACK))
           .splitOpenFileCost(config.get(SPLIT_FILE_OPEN_COST))
           .streaming(config.get(STREAMING))
-          .locality(config.get(LOCALITY))
           .monitorInterval(config.get(MONITOR_INTERVAL))
           .nameMapping(properties.get(DEFAULT_NAME_MAPPING));
     }

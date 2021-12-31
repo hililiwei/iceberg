@@ -87,8 +87,8 @@ public class FlinkInputFormat extends RichInputFormat<RowData, FlinkInputSplit> 
   @Override
   public InputSplitAssigner getInputSplitAssigner(FlinkInputSplit[] inputSplits) {
     return localityPreferred ?
-        new DefaultInputSplitAssigner(inputSplits) :
-        new LocatableInputSplitAssigner(inputSplits);
+        new LocatableInputSplitAssigner(inputSplits) :
+        new DefaultInputSplitAssigner(inputSplits);
   }
 
   @Override

@@ -47,18 +47,16 @@ public class FlinkInputFormat extends RichInputFormat<RowData, FlinkInputSplit> 
   private final EncryptionManager encryption;
   private final ScanContext context;
   private final RowDataFileScanTaskReader rowDataReader;
-  private final boolean localityPreferred;
 
   private transient DataIterator<RowData> iterator;
   private transient long currentReadCount = 0L;
 
   FlinkInputFormat(TableLoader tableLoader, Schema tableSchema, FileIO io, EncryptionManager encryption,
-                   ScanContext context, boolean localityPreferred) {
+                   ScanContext context) {
     this.tableLoader = tableLoader;
     this.io = io;
     this.encryption = encryption;
     this.context = context;
-    this.localityPreferred = localityPreferred;
     this.rowDataReader = new RowDataFileScanTaskReader(tableSchema,
         context.project(), context.nameMapping(), context.caseSensitive());
   }
@@ -80,13 +78,13 @@ public class FlinkInputFormat extends RichInputFormat<RowData, FlinkInputSplit> 
     tableLoader.open();
     try (TableLoader loader = tableLoader) {
       Table table = loader.loadTable();
-      return FlinkSplitGenerator.createInputSplits(table, context, localityPreferred);
+      return FlinkSplitGenerator.createInputSplits(table, context);
     }
   }
 
   @Override
   public InputSplitAssigner getInputSplitAssigner(FlinkInputSplit[] inputSplits) {
-    return localityPreferred ?
+    return context.locality() ?
         new LocatableInputSplitAssigner(inputSplits) :
         new DefaultInputSplitAssigner(inputSplits);
   }

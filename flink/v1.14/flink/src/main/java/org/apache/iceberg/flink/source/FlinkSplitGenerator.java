@@ -37,9 +37,10 @@ class FlinkSplitGenerator {
   private FlinkSplitGenerator() {
   }
 
-  static FlinkInputSplit[] createInputSplits(Table table, ScanContext context, boolean localityPreferred) {
+  static FlinkInputSplit[] createInputSplits(Table table, ScanContext context) {
     List<CombinedScanTask> tasks = tasks(table, context);
     FlinkInputSplit[] splits = new FlinkInputSplit[tasks.size()];
+    boolean localityPreferred = context.locality();
 
     Tasks.range(tasks.size())
         .stopOnFailure()
@@ -54,10 +55,6 @@ class FlinkSplitGenerator {
         });
 
     return splits;
-  }
-
-  static FlinkInputSplit[] createInputSplits(Table table, ScanContext context) {
-    return createInputSplits(table, context, false);
   }
 
   private static List<CombinedScanTask> tasks(Table table, ScanContext context) {

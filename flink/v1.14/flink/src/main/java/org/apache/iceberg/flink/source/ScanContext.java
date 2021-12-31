@@ -69,7 +69,7 @@ class ScanContext implements Serializable {
       ConfigOptions.key("monitor-interval").durationType().defaultValue(Duration.ofSeconds(10));
 
   private static final ConfigOption<Boolean> LOCALITY  =
-      ConfigOptions.key("locality").booleanType().noDefaultValue();
+      ConfigOptions.key("locality").booleanType().defaultValue(null);
 
   private final boolean caseSensitive;
   private final boolean locality;

@@ -114,6 +114,11 @@ public class FlinkSource {
       return this;
     }
 
+    public Builder locality(boolean locality) {
+      contextBuilder.locality(locality);
+      return this;
+    }
+
     public Builder properties(Map<String, String> properties) {
       contextBuilder.fromProperties(properties);
       return this;
@@ -203,9 +208,9 @@ public class FlinkSource {
         contextBuilder.project(FlinkSchemaUtil.convert(icebergSchema, projectedSchema));
       }
       this.localityPreferred = localityEnabled();
+      this.locality(localityPreferred);
 
-      return new FlinkInputFormat(tableLoader, icebergSchema, io, encryption, contextBuilder.build(),
-          this.localityPreferred);
+      return new FlinkInputFormat(tableLoader, icebergSchema, io, encryption, contextBuilder.build());
     }
 
     public DataStream<RowData> build() {
@@ -219,7 +224,7 @@ public class FlinkSource {
         int parallelism = inferParallelism(format, context);
         return env.createInput(format, typeInfo).setParallelism(parallelism);
       } else {
-        StreamingMonitorFunction function = new StreamingMonitorFunction(tableLoader, context, localityPreferred);
+        StreamingMonitorFunction function = new StreamingMonitorFunction(tableLoader, context);
 
         String monitorFunctionName = String.format("Iceberg table (%s) monitor", table);
         String readerOperatorName = String.format("Iceberg table (%s) reader", table);

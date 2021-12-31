@@ -226,7 +226,7 @@ public class TestStreamingMonitorFunction extends TableTestBase {
   }
 
   private StreamingMonitorFunction createFunction(ScanContext scanContext) {
-    return new StreamingMonitorFunction(TestTableLoader.of(tableDir.getAbsolutePath()), scanContext, false);
+    return new StreamingMonitorFunction(TestTableLoader.of(tableDir.getAbsolutePath()), scanContext);
   }
 
   private AbstractStreamOperatorTestHarness<FlinkInputSplit> createHarness(StreamingMonitorFunction function)

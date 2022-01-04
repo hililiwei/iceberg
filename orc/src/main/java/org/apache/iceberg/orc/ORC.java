@@ -83,6 +83,7 @@ public class ORC {
     private BiFunction<Schema, TypeDescription, OrcRowWriter<?>> createWriterFunc;
     private Map<String, byte[]> metadata = Maps.newHashMap();
     private MetricsConfig metricsConfig;
+    private Function<Configuration, Context> createContextFunc = Context::dataContext;
 
     private WriteBuilder(OutputFile file) {
       this.file = file;
@@ -100,8 +101,9 @@ public class ORC {
 
     /**
      * Setting a specific configuration value for the writer.
+     *
      * @param property The property to set
-     * @param value The value to set
+     * @param value    The value to set
      * @return The resulting builder for chaining purposes
      * @deprecated Please use #set(String, String) instead
      */
@@ -144,18 +146,66 @@ public class ORC {
       return this;
     }
 
+    // supposed to always be a private method used strictly by data and delete write builders
+    private WriteBuilder createContextFunc(Function<Configuration, Context> newCreateContextFunc) {
+      this.createContextFunc = newCreateContextFunc;
+      return this;
+    }
+
     public <D> FileAppender<D> build() {
       Preconditions.checkNotNull(schema, "Schema is required");
 
-      conf.setLong(
-          OrcConf.STRIPE_SIZE.name(),
-          conf.getLong(TableProperties.ORC_STRIPE_SIZE_BYTES, TableProperties.ORC_STRIPE_SIZE_BYTES_DEFAULT));
-      conf.setLong(
-          OrcConf.BLOCK_SIZE.name(),
-          conf.getLong(TableProperties.ORC_BLOCK_SIZE_BYTES, TableProperties.ORC_BLOCK_SIZE_BYTES_DEFAULT));
+      // Map Iceberg properties to pass down to the ORC writer
+      Context context = createContextFunc.apply(conf);
+      long stripeSize = context.stripeSize();
+      long blockSize = context.blockSize();
+
+      conf.setLong(OrcConf.STRIPE_SIZE.name(), stripeSize);
+      conf.setLong(OrcConf.BLOCK_SIZE.name(), blockSize);
+
       return new OrcFileAppender<>(schema,
           this.file, createWriterFunc, conf, metadata,
           conf.getInt(VECTOR_ROW_BATCH_SIZE, VectorizedRowBatch.DEFAULT_SIZE), metricsConfig);
+    }
+
+    private static class Context {
+      private final long stripeSize;
+      private final long blockSize;
+
+      public long stripeSize() {
+        return stripeSize;
+      }
+
+      public long blockSize() {
+        return blockSize;
+      }
+
+      private Context(long stripeSize, long blockSize) {
+        this.stripeSize = stripeSize;
+        this.blockSize = blockSize;
+      }
+
+      static Context dataContext(Configuration conf) {
+        long stripeSize =
+            conf.getLong(TableProperties.ORC_STRIPE_SIZE_BYTES, TableProperties.ORC_STRIPE_SIZE_BYTES_DEFAULT);
+
+        long blockSize =
+            conf.getLong(TableProperties.ORC_BLOCK_SIZE_BYTES, TableProperties.ORC_BLOCK_SIZE_BYTES_DEFAULT);
+
+        return new Context(stripeSize, blockSize);
+      }
+
+      static Context deleteContext(Configuration conf) {
+        Context dataContext = dataContext(conf);
+
+        long stripeSize =
+            conf.getLong(TableProperties.DELETE_ORC_STRIPE_SIZE_BYTES, dataContext.stripeSize());
+
+        long blockSize =
+            conf.getLong(TableProperties.DELETE_ORC_BLOCK_SIZE_BYTES, dataContext.stripeSize());
+
+        return new Context(stripeSize, blockSize);
+      }
     }
   }
 
@@ -373,6 +423,8 @@ public class ORC {
       // the appender uses the row schema without extra columns
       appenderBuilder.schema(rowSchema);
       appenderBuilder.createWriterFunc(createWriterFunc);
+      appenderBuilder.createContextFunc(WriteBuilder.Context::deleteContext);
+
 
       return new EqualityDeleteWriter<>(
           appenderBuilder.build(), FileFormat.ORC, location, spec, partition, keyMetadata,

@@ -25,19 +25,13 @@ import org.apache.iceberg.relocated.com.google.common.base.MoreObjects;
 
 public class FlinkInputSplit extends LocatableInputSplit {
 
-  private final int splitNumber;
   private final CombinedScanTask task;
 
   FlinkInputSplit(int splitNumber, CombinedScanTask task, String[] hosts) {
     super(splitNumber, hosts);
-    this.splitNumber = splitNumber;
     this.task = task;
   }
 
-  @Override
-  public int getSplitNumber() {
-    return splitNumber;
-  }
 
   CombinedScanTask getTask() {
     return task;
@@ -46,7 +40,7 @@ public class FlinkInputSplit extends LocatableInputSplit {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-        .add("splitNumber", splitNumber)
+        .add("splitNumber", getSplitNumber())
         .add("task", task)
         .toString();
   }

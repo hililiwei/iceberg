@@ -58,11 +58,11 @@ public class TestFlinkTableSink extends FlinkCatalogTestBase {
   @ClassRule
   public static final TemporaryFolder TEMPORARY_FOLDER = new TemporaryFolder();
 
-  private static final String TABLE_NAME = "test_table";
+  public static final String TABLE_NAME = "test_table";
   private TableEnvironment tEnv;
   private Table icebergTable;
 
-  private final FileFormat format;
+  public final FileFormat format;
   private final boolean isStreamingJob;
 
   @Parameterized.Parameters(name = "catalogName={0}, baseNamespace={1}, format={2}, isStreaming={3}")

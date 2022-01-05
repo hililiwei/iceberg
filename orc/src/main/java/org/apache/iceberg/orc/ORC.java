@@ -186,11 +186,17 @@ public class ORC {
       }
 
       static Context dataContext(Configuration conf) {
-        long stripeSize =
-            conf.getLong(TableProperties.ORC_STRIPE_SIZE_BYTES, TableProperties.ORC_STRIPE_SIZE_BYTES_DEFAULT);
+        String stripeSizeStr =
+            conf.get(TableProperties.ORC_STRIPE_SIZE_BYTES, conf.get(OrcConf.STRIPE_SIZE.getAttribute()));
+        long stripeSize = stripeSizeStr != null ? Long.parseLong(stripeSizeStr) :
+            TableProperties.ORC_STRIPE_SIZE_BYTES_DEFAULT;
 
-        long blockSize =
-            conf.getLong(TableProperties.ORC_BLOCK_SIZE_BYTES, TableProperties.ORC_BLOCK_SIZE_BYTES_DEFAULT);
+        String blockSizeStr = conf.get(
+            TableProperties.ORC_BLOCK_SIZE_BYTES,
+            conf.get(OrcConf.BLOCK_SIZE.getAttribute()));
+
+        long blockSize = blockSizeStr != null ? Long.parseLong(blockSizeStr) :
+            TableProperties.ORC_BLOCK_SIZE_BYTES_DEFAULT;
 
         return new Context(stripeSize, blockSize);
       }

@@ -24,6 +24,9 @@ import org.apache.flink.configuration.ConfigOptions;
 
 public class FlinkConfigOptions {
 
+  private FlinkConfigOptions() {
+  }
+
   public static final ConfigOption<Boolean> TABLE_EXEC_ICEBERG_INFER_SOURCE_PARALLELISM =
       ConfigOptions.key("table.exec.iceberg.infer-source-parallelism")
           .booleanType()
@@ -37,13 +40,9 @@ public class FlinkConfigOptions {
           .defaultValue(100)
           .withDescription("Sets max infer parallelism for source operator.");
 
-  public static final ConfigOption<Boolean> TABLE_EXEC_ICEBERG_INFER_SOURCE_LOCALITY =
-      ConfigOptions.key("table.exec.iceberg.infer-source-locality")
+  public static final ConfigOption<Boolean> TABLE_EXEC_ICEBERG_EXPOSE_SPLIT_LOCALITY_INFO =
+      ConfigOptions.key("table.exec.iceberg.expose-split-locality-info")
           .booleanType()
           .noDefaultValue()
-          .withDescription("Controls whether to report locality information to Flink while allocating input " +
-              "partitions.");
-
-  private FlinkConfigOptions() {
-  }
+          .withDescription("Expose split host information to use Flink's locality aware split assigner.");
 }

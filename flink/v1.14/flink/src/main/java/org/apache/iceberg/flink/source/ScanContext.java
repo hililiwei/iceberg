@@ -69,7 +69,7 @@ class ScanContext implements Serializable {
       ConfigOptions.key("monitor-interval").durationType().defaultValue(Duration.ofSeconds(10));
 
   private final boolean caseSensitive;
-  private final boolean locality;
+  private final boolean exposeLocality;
   private final Long snapshotId;
   private final Long startSnapshotId;
   private final Long endSnapshotId;
@@ -88,7 +88,7 @@ class ScanContext implements Serializable {
   private ScanContext(boolean caseSensitive, Long snapshotId, Long startSnapshotId, Long endSnapshotId,
                       Long asOfTimestamp, Long splitSize, Integer splitLookback, Long splitOpenFileCost,
                       boolean isStreaming, Duration monitorInterval, String nameMapping,
-                      Schema schema, List<Expression> filters, long limit, boolean locality) {
+                      Schema schema, List<Expression> filters, long limit, boolean exposeLocality) {
     this.caseSensitive = caseSensitive;
     this.snapshotId = snapshotId;
     this.startSnapshotId = startSnapshotId;
@@ -103,7 +103,7 @@ class ScanContext implements Serializable {
     this.schema = schema;
     this.filters = filters;
     this.limit = limit;
-    this.locality = locality;
+    this.exposeLocality = exposeLocality;
   }
 
   boolean caseSensitive() {
@@ -162,8 +162,8 @@ class ScanContext implements Serializable {
     return limit;
   }
 
-  boolean locality() {
-    return locality;
+  boolean exposeLocality() {
+    return exposeLocality;
   }
 
   ScanContext copyWithAppendsBetween(long newStartSnapshotId, long newEndSnapshotId) {
@@ -182,7 +182,7 @@ class ScanContext implements Serializable {
         .project(schema)
         .filters(filters)
         .limit(limit)
-        .locality(locality)
+        .exposeLocality(exposeLocality)
         .build();
   }
 
@@ -202,7 +202,7 @@ class ScanContext implements Serializable {
         .project(schema)
         .filters(filters)
         .limit(limit)
-        .locality(locality)
+        .exposeLocality(exposeLocality)
         .build();
   }
 
@@ -225,7 +225,7 @@ class ScanContext implements Serializable {
     private Schema projectedSchema;
     private List<Expression> filters;
     private long limit = -1L;
-    private boolean locality;
+    private boolean exposeLocality;
 
     private Builder() {
     }
@@ -300,8 +300,8 @@ class ScanContext implements Serializable {
       return this;
     }
 
-    Builder locality(boolean newLocality) {
-      this.locality = newLocality;
+    Builder exposeLocality(boolean newExposeLocality) {
+      this.exposeLocality = newExposeLocality;
       return this;
     }
 
@@ -326,7 +326,7 @@ class ScanContext implements Serializable {
       return new ScanContext(caseSensitive, snapshotId, startSnapshotId,
           endSnapshotId, asOfTimestamp, splitSize, splitLookback,
           splitOpenFileCost, isStreaming, monitorInterval, nameMapping, projectedSchema,
-          filters, limit, locality);
+          filters, limit, exposeLocality);
     }
   }
 }

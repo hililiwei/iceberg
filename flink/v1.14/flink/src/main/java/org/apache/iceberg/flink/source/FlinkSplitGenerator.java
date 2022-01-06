@@ -40,18 +40,18 @@ class FlinkSplitGenerator {
   static FlinkInputSplit[] createInputSplits(Table table, ScanContext context) {
     List<CombinedScanTask> tasks = tasks(table, context);
     FlinkInputSplit[] splits = new FlinkInputSplit[tasks.size()];
-    boolean localityPreferred = context.locality();
+    boolean exposeLocality = context.exposeLocality();
 
     Tasks.range(tasks.size())
         .stopOnFailure()
-        .executeWith(localityPreferred ? ThreadPools.getWorkerPool() : null)
+        .executeWith(exposeLocality ? ThreadPools.getWorkerPool() : null)
         .run(index -> {
           CombinedScanTask task = tasks.get(index);
-          String[] hosts = new String[0];
-          if (localityPreferred) {
+          String[] hosts = null;
+          if (exposeLocality) {
             hosts = Util.blockLocations(table.io(), task);
           }
-          splits[index] = new FlinkInputSplit(index, task, hosts.length > 0 ? hosts : null);
+          splits[index] = new FlinkInputSplit(index, task, hosts);
         });
 
     return splits;

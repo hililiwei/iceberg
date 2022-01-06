@@ -46,7 +46,7 @@ import org.apache.spark.sql.SparkSession;
  */
 public class SparkReadConf {
 
-  private static final Set<String> LOCALITY_WHITELIST_FS = ImmutableSet.of("hdfs");
+  private static final Set<String> FILE_SYSTEM_SUPPORT_LOCALITY = ImmutableSet.of("hdfs");
 
   private final SparkSession spark;
   private final Table table;
@@ -69,7 +69,7 @@ public class SparkReadConf {
 
     if (file instanceof HadoopInputFile) {
       String scheme = ((HadoopInputFile) file).getFileSystem().getScheme();
-      boolean defaultValue = LOCALITY_WHITELIST_FS.contains(scheme);
+      boolean defaultValue = FILE_SYSTEM_SUPPORT_LOCALITY.contains(scheme);
       return PropertyUtil.propertyAsBoolean(
           readOptions,
           SparkReadOptions.LOCALITY,

@@ -23,7 +23,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.ReadableConfig;
@@ -41,11 +40,9 @@ import org.apache.iceberg.flink.FlinkConfigOptions;
 import org.apache.iceberg.flink.FlinkSchemaUtil;
 import org.apache.iceberg.flink.TableLoader;
 import org.apache.iceberg.flink.util.FlinkCompatibilityUtil;
-import org.apache.iceberg.hadoop.HadoopInputFile;
+import org.apache.iceberg.hadoop.HadoopFileIO;
 import org.apache.iceberg.io.FileIO;
-import org.apache.iceberg.io.InputFile;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
-import org.apache.iceberg.relocated.com.google.common.collect.ImmutableSet;
 
 public class FlinkSource {
   private FlinkSource() {
@@ -74,14 +71,11 @@ public class FlinkSource {
    * Source builder to build {@link DataStream}.
    */
   public static class Builder {
-    private static final Set<String> LOCALITY_WHITELIST_FS = ImmutableSet.of("hdfs");
-
     private StreamExecutionEnvironment env;
     private Table table;
     private TableLoader tableLoader;
     private TableSchema projectedSchema;
     private ReadableConfig readableConfig = new Configuration();
-    private boolean localityPreferred;
     private final ScanContext.Builder contextBuilder = ScanContext.builder();
 
     public Builder tableLoader(TableLoader newLoader) {
@@ -111,11 +105,6 @@ public class FlinkSource {
 
     public Builder limit(long newLimit) {
       contextBuilder.limit(newLimit);
-      return this;
-    }
-
-    public Builder locality(boolean locality) {
-      contextBuilder.locality(locality);
       return this;
     }
 
@@ -207,8 +196,7 @@ public class FlinkSource {
       } else {
         contextBuilder.project(FlinkSchemaUtil.convert(icebergSchema, projectedSchema));
       }
-      this.localityPreferred = localityEnabled();
-      this.locality(localityPreferred);
+      contextBuilder.exposeLocality(localityEnabled());
 
       return new FlinkInputFormat(tableLoader, icebergSchema, io, encryption, contextBuilder.build());
     }
@@ -263,19 +251,11 @@ public class FlinkSource {
     }
 
     private boolean localityEnabled() {
-      InputFile file = table.io().newInputFile(table.location());
-      if (file instanceof HadoopInputFile) {
-        String scheme = ((HadoopInputFile) file).getFileSystem().getScheme();
-        boolean defaultValue = LOCALITY_WHITELIST_FS.contains(scheme);
-
+      FileIO fileIO = table.io();
+      if (fileIO instanceof HadoopFileIO) {
         Boolean localityConfig = readableConfig.get(FlinkConfigOptions
-            .TABLE_EXEC_ICEBERG_INFER_SOURCE_LOCALITY);
-
-        if (localityConfig != null) {
-          return localityConfig && defaultValue;
-        } else {
-          return defaultValue;
-        }
+            .TABLE_EXEC_ICEBERG_EXPOSE_SPLIT_LOCALITY_INFO);
+        return localityConfig != null ? localityConfig : true;
       }
       return false;
     }

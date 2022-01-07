@@ -271,7 +271,7 @@ public class FlinkSource {
 
           return localityConfig != null ? localityConfig && defaultValue : defaultValue;
         } catch (IOException e) {
-          LOG.warn("Failed to determine whether the locality information can be exposed for table: " + table, e);
+          LOG.warn("Failed to determine whether the locality information can be exposed for table: {}", table, e);
         }
       }
       return false;

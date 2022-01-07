@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.ReadableConfig;
@@ -31,6 +32,7 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.api.config.ExecutionConfigOptions;
 import org.apache.flink.table.data.RowData;
+import org.apache.hadoop.fs.Path;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableScan;
@@ -43,8 +45,12 @@ import org.apache.iceberg.flink.util.FlinkCompatibilityUtil;
 import org.apache.iceberg.hadoop.HadoopFileIO;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
+import org.apache.iceberg.relocated.com.google.common.collect.ImmutableSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class FlinkSource {
+  private static final Logger LOG = LoggerFactory.getLogger(FlinkSource.class);
   private FlinkSource() {
   }
 
@@ -71,6 +77,8 @@ public class FlinkSource {
    * Source builder to build {@link DataStream}.
    */
   public static class Builder {
+    private static final Set<String> FILE_SYSTEM_SUPPORT_LOCALITY = ImmutableSet.of("hdfs");
+
     private StreamExecutionEnvironment env;
     private Table table;
     private TableLoader tableLoader;
@@ -250,12 +258,20 @@ public class FlinkSource {
       return parallelism;
     }
 
-    private boolean localityEnabled() {
+    boolean localityEnabled() {
       FileIO fileIO = table.io();
       if (fileIO instanceof HadoopFileIO) {
-        Boolean localityConfig = readableConfig.get(FlinkConfigOptions
-            .TABLE_EXEC_ICEBERG_EXPOSE_SPLIT_LOCALITY_INFO);
-        return localityConfig != null ? localityConfig : true;
+        Boolean localityConfig = readableConfig.get(FlinkConfigOptions.TABLE_EXEC_ICEBERG_EXPOSE_SPLIT_LOCALITY_INFO);
+
+        HadoopFileIO hadoopFileIO = (HadoopFileIO) fileIO;
+        try {
+          String scheme = new Path(table.location()).getFileSystem(hadoopFileIO.getConf()).getScheme();
+          boolean defaultValue = FILE_SYSTEM_SUPPORT_LOCALITY.contains(scheme);
+
+          return localityConfig != null ? localityConfig && defaultValue : defaultValue;
+        } catch (IOException e) {
+          LOG.warn("Failed to determine whether the locality information can be exposed for table: " + table, e);
+        }
       }
       return false;
     }

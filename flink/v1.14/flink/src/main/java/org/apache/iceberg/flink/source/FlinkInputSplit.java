@@ -19,6 +19,7 @@
 
 package org.apache.iceberg.flink.source;
 
+import javax.annotation.Nullable;
 import org.apache.flink.core.io.LocatableInputSplit;
 import org.apache.iceberg.CombinedScanTask;
 import org.apache.iceberg.relocated.com.google.common.base.MoreObjects;
@@ -27,11 +28,10 @@ public class FlinkInputSplit extends LocatableInputSplit {
 
   private final CombinedScanTask task;
 
-  FlinkInputSplit(int splitNumber, CombinedScanTask task, String[] hosts) {
+  FlinkInputSplit(int splitNumber, CombinedScanTask task, @Nullable String[] hosts) {
     super(splitNumber, hosts);
     this.task = task;
   }
-
 
   CombinedScanTask getTask() {
     return task;

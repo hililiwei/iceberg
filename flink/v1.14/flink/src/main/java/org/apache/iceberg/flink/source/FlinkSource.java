@@ -51,6 +51,7 @@ import org.slf4j.LoggerFactory;
 
 public class FlinkSource {
   private static final Logger LOG = LoggerFactory.getLogger(FlinkSource.class);
+
   private FlinkSource() {
   }
 

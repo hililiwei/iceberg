@@ -66,12 +66,10 @@ public class TestStreamScanSql extends FlinkCatalogTestBase {
         if (tEnv == null) {
           EnvironmentSettings.Builder settingsBuilder = EnvironmentSettings
               .newInstance()
-              .useBlinkPlanner()
               .inStreamingMode();
 
           StreamExecutionEnvironment env = StreamExecutionEnvironment
               .getExecutionEnvironment(MiniClusterResource.DISABLE_CLASSLOADER_CHECK_CONFIG);
-          env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
           env.enableCheckpointing(400);
 
           StreamTableEnvironment streamTableEnv = StreamTableEnvironment.create(env, settingsBuilder.build());

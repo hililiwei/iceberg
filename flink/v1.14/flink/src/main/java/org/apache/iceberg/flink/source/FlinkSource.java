@@ -113,6 +113,11 @@ public class FlinkSource {
       return this;
     }
 
+    public Builder projectedFields(int[][] newProjectedFields) {
+      contextBuilder.projectedFields(newProjectedFields);
+      return this;
+    }
+
     public Builder limit(long newLimit) {
       contextBuilder.limit(newLimit);
       return this;

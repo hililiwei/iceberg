@@ -29,6 +29,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.test.util.MiniClusterWithClientResource;
 import org.apache.flink.types.Row;
 import org.apache.hadoop.conf.Configuration;
@@ -43,7 +44,6 @@ import org.apache.iceberg.data.RandomGenericData;
 import org.apache.iceberg.data.Record;
 import org.apache.iceberg.expressions.Expression;
 import org.apache.iceberg.expressions.Expressions;
-import org.apache.iceberg.flink.MiniClusterResource;
 import org.apache.iceberg.flink.TableLoader;
 import org.apache.iceberg.flink.TestFixtures;
 import org.apache.iceberg.flink.TestHelpers;
@@ -62,12 +62,17 @@ import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
+import static org.apache.flink.configuration.HeartbeatManagerOptions.HEARTBEAT_TIMEOUT;
+
 @RunWith(Parameterized.class)
 public abstract class TestFlinkScan {
 
   @ClassRule
   public static final MiniClusterWithClientResource MINI_CLUSTER_RESOURCE =
-      MiniClusterResource.createWithClassloaderCheckDisabled();
+      new MiniClusterWithClientResource(new MiniClusterResourceConfiguration.Builder()
+          .setConfiguration(new org.apache.flink.configuration.Configuration()
+              .set(HEARTBEAT_TIMEOUT, 5000000000L)
+          ).build());
 
   @ClassRule
   public static final TemporaryFolder TEMPORARY_FOLDER = new TemporaryFolder();
@@ -81,7 +86,7 @@ public abstract class TestFlinkScan {
 
   @Parameterized.Parameters(name = "format={0}")
   public static Object[] parameters() {
-    return new Object[] {"avro", "parquet", "orc"};
+    return new Object[] {"parquet"};
   }
 
   TestFlinkScan(String fileFormat) {

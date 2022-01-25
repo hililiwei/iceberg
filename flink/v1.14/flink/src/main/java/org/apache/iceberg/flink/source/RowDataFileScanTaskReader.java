@@ -35,6 +35,7 @@ import org.apache.iceberg.flink.RowDataWrapper;
 import org.apache.iceberg.flink.data.FlinkAvroReader;
 import org.apache.iceberg.flink.data.FlinkOrcReader;
 import org.apache.iceberg.flink.data.FlinkParquetReaders;
+import org.apache.iceberg.flink.data.RowDataNestProjection;
 import org.apache.iceberg.flink.data.RowDataProjection;
 import org.apache.iceberg.flink.data.RowDataUtil;
 import org.apache.iceberg.io.CloseableIterable;
@@ -55,11 +56,22 @@ public class RowDataFileScanTaskReader implements FileScanTaskReader<RowData> {
   private final Schema projectedSchema;
   private final String nameMapping;
   private final boolean caseSensitive;
+  private final int[][] projectedFields;
 
-  public RowDataFileScanTaskReader(Schema tableSchema, Schema projectedSchema,
-                                   String nameMapping, boolean caseSensitive) {
+  public RowDataFileScanTaskReader(Schema tableSchema, Schema projectedSchema, String nameMapping,
+                                    boolean caseSensitive) {
     this.tableSchema = tableSchema;
     this.projectedSchema = projectedSchema;
+    this.projectedFields = null;
+    this.nameMapping = nameMapping;
+    this.caseSensitive = caseSensitive;
+  }
+
+  public RowDataFileScanTaskReader(Schema tableSchema, Schema projectedSchema, int[][] projectedFields,
+                                    String nameMapping, boolean caseSensitive) {
+    this.tableSchema = tableSchema;
+    this.projectedSchema = projectedSchema;
+    this.projectedFields = projectedFields;
     this.nameMapping = nameMapping;
     this.caseSensitive = caseSensitive;
   }
@@ -80,6 +92,12 @@ public class RowDataFileScanTaskReader implements FileScanTaskReader<RowData> {
     if (!projectedSchema.sameSchema(deletes.requiredSchema())) {
       RowDataProjection rowDataProjection = RowDataProjection.create(
           deletes.requiredRowType(), deletes.requiredSchema().asStruct(), projectedSchema.asStruct());
+      iterable = CloseableIterable.transform(iterable, rowDataProjection::wrap);
+    }
+
+    if (projectedFields != null) {
+      RowDataNestProjection rowDataProjection = RowDataNestProjection.create(tableSchema, projectedSchema,
+          projectedFields);
       iterable = CloseableIterable.transform(iterable, rowDataProjection::wrap);
     }
 

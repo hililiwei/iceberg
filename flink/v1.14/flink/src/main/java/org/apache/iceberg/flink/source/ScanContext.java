@@ -85,6 +85,7 @@ class ScanContext implements Serializable {
 
   private final String nameMapping;
   private final Schema schema;
+  private final int[][] projectedFields;
   private final List<Expression> filters;
   private final long limit;
   private final boolean includeColumnStats;
@@ -92,7 +93,8 @@ class ScanContext implements Serializable {
   private ScanContext(boolean caseSensitive, Long snapshotId, Long startSnapshotId, Long endSnapshotId,
                       Long asOfTimestamp, Long splitSize, Integer splitLookback, Long splitOpenFileCost,
                       boolean isStreaming, Duration monitorInterval, String nameMapping, Schema schema,
-                      List<Expression> filters, long limit, boolean includeColumnStats, boolean exposeLocality) {
+                      int[][] projectedFields, List<Expression> filters, long limit, boolean includeColumnStats,
+                      boolean exposeLocality) {
     this.caseSensitive = caseSensitive;
     this.snapshotId = snapshotId;
     this.startSnapshotId = startSnapshotId;
@@ -106,6 +108,7 @@ class ScanContext implements Serializable {
 
     this.nameMapping = nameMapping;
     this.schema = schema;
+    this.projectedFields = projectedFields;
     this.filters = filters;
     this.limit = limit;
     this.includeColumnStats = includeColumnStats;
@@ -158,6 +161,10 @@ class ScanContext implements Serializable {
 
   Schema project() {
     return schema;
+  }
+
+  int[][] projectedFields() {
+    return projectedFields;
   }
 
   List<Expression> filters() {
@@ -235,6 +242,7 @@ class ScanContext implements Serializable {
     private Duration monitorInterval = MONITOR_INTERVAL.defaultValue();
     private String nameMapping;
     private Schema projectedSchema;
+    private int[][] projectedFields;
     private List<Expression> filters;
     private long limit = -1L;
     private boolean includeColumnStats = INCLUDE_COLUMN_STATS.defaultValue();
@@ -303,6 +311,11 @@ class ScanContext implements Serializable {
       return this;
     }
 
+    Builder projectedFields(int[][] newProjectedFields) {
+      this.projectedFields = newProjectedFields;
+      return this;
+    }
+
     Builder filters(List<Expression> newFilters) {
       this.filters = newFilters;
       return this;
@@ -344,7 +357,7 @@ class ScanContext implements Serializable {
     public ScanContext build() {
       return new ScanContext(caseSensitive, snapshotId, startSnapshotId,
           endSnapshotId, asOfTimestamp, splitSize, splitLookback,
-          splitOpenFileCost, isStreaming, monitorInterval, nameMapping, projectedSchema,
+          splitOpenFileCost, isStreaming, monitorInterval, nameMapping, projectedSchema, projectedFields,
           filters, limit, includeColumnStats, exposeLocality);
     }
   }

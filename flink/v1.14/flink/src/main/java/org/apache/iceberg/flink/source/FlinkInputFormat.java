@@ -60,7 +60,7 @@ public class FlinkInputFormat extends RichInputFormat<RowData, FlinkInputSplit> 
     this.encryption = encryption;
     this.context = context;
     this.rowDataReader = new RowDataFileScanTaskReader(tableSchema,
-        context.project(), context.nameMapping(), context.caseSensitive());
+        context.project(), context.projectedFields(), context.nameMapping(), context.caseSensitive());
   }
 
   @VisibleForTesting

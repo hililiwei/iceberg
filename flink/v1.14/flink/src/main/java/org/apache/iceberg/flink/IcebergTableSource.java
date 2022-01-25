@@ -36,9 +36,12 @@ import org.apache.flink.table.connector.source.abilities.SupportsLimitPushDown;
 import org.apache.flink.table.connector.source.abilities.SupportsProjectionPushDown;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.expressions.ResolvedExpression;
-import org.apache.flink.table.types.DataType;
+import org.apache.flink.table.types.FieldsDataType;
+import org.apache.flink.table.types.logical.RowType;
+import org.apache.flink.table.types.utils.DataTypeUtils;
 import org.apache.iceberg.expressions.Expression;
 import org.apache.iceberg.flink.source.FlinkSource;
+import org.apache.iceberg.flink.util.FlinkCompatibilityUtil;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableList;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
@@ -49,7 +52,8 @@ import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 public class IcebergTableSource
     implements ScanTableSource, SupportsProjectionPushDown, SupportsFilterPushDown, SupportsLimitPushDown {
 
-  private int[] projectedFields;
+  private int[][] projectedFields;
+  private int[] topProjectedFields;
   private long limit;
   private List<Expression> filters;
 
@@ -64,6 +68,7 @@ public class IcebergTableSource
     this.schema = toCopy.schema;
     this.properties = toCopy.properties;
     this.projectedFields = toCopy.projectedFields;
+    this.topProjectedFields = toCopy.topProjectedFields;
     this.isLimitPushDown = toCopy.isLimitPushDown;
     this.limit = toCopy.limit;
     this.filters = toCopy.filters;
@@ -76,7 +81,7 @@ public class IcebergTableSource
   }
 
   private IcebergTableSource(TableLoader loader, TableSchema schema, Map<String, String> properties,
-                             int[] projectedFields, boolean isLimitPushDown,
+                             int[][] projectedFields, boolean isLimitPushDown,
                              long limit, List<Expression> filters, ReadableConfig readableConfig) {
     this.loader = loader;
     this.schema = schema;
@@ -90,12 +95,8 @@ public class IcebergTableSource
 
   @Override
   public void applyProjection(int[][] projectFields) {
-    this.projectedFields = new int[projectFields.length];
-    for (int i = 0; i < projectFields.length; i++) {
-      Preconditions.checkArgument(projectFields[i].length == 1,
-          "Don't support nested projection in iceberg source now.");
-      this.projectedFields[i] = projectFields[i][0];
-    }
+    this.projectedFields = projectFields;
+    this.topProjectedFields = Arrays.stream(projectFields).mapToInt(array -> array[0]).distinct().toArray();
   }
 
   private DataStream<RowData> createDataStream(StreamExecutionEnvironment execEnv) {
@@ -104,6 +105,7 @@ public class IcebergTableSource
         .tableLoader(loader)
         .properties(properties)
         .project(getProjectedSchema())
+        .projectedFields(projectedFields)
         .limit(limit)
         .filters(filters)
         .flinkConf(readableConfig)
@@ -111,15 +113,7 @@ public class IcebergTableSource
   }
 
   private TableSchema getProjectedSchema() {
-    if (projectedFields == null) {
-      return schema;
-    } else {
-      String[] fullNames = schema.getFieldNames();
-      DataType[] fullTypes = schema.getFieldDataTypes();
-      return TableSchema.builder().fields(
-          Arrays.stream(projectedFields).mapToObj(i -> fullNames[i]).toArray(String[]::new),
-          Arrays.stream(projectedFields).mapToObj(i -> fullTypes[i]).toArray(DataType[]::new)).build();
-    }
+    return projectedFields == null ? schema : projectSchema(schema, topProjectedFields);
   }
 
   @Override
@@ -146,8 +140,7 @@ public class IcebergTableSource
 
   @Override
   public boolean supportsNestedProjection() {
-    // TODO: support nested projection
-    return false;
+    return true;
   }
 
   @Override
@@ -178,5 +171,21 @@ public class IcebergTableSource
   @Override
   public String asSummaryString() {
     return "Iceberg table source";
+  }
+
+  private static TableSchema projectSchema(TableSchema tableSchema, int[] projectedFields) {
+    Preconditions.checkArgument(
+        FlinkCompatibilityUtil.containsPhysicalColumnsOnly(tableSchema),
+        "Projection is only supported for physical columns.");
+    TableSchema.Builder builder = TableSchema.builder();
+
+    FieldsDataType fields =
+        (FieldsDataType)
+            DataTypeUtils.projectRow(tableSchema.toRowDataType(), projectedFields);
+    RowType topFields = (RowType) fields.getLogicalType();
+    for (int i = 0; i < topFields.getFieldCount(); i++) {
+      builder.field(topFields.getFieldNames().get(i), fields.getChildren().get(i));
+    }
+    return builder.build();
   }
 }

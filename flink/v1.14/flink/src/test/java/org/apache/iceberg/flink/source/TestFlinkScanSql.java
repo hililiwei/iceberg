@@ -30,6 +30,8 @@ import org.apache.flink.table.api.config.TableConfigOptions;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.CloseableIterator;
 import org.apache.iceberg.DataFile;
+import org.apache.iceberg.PartitionSpec;
+import org.apache.iceberg.Schema;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TestHelpers;
 import org.apache.iceberg.catalog.TableIdentifier;
@@ -44,6 +46,7 @@ import org.apache.iceberg.flink.TableLoader;
 import org.apache.iceberg.flink.TestFixtures;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.iceberg.relocated.com.google.common.collect.Maps;
+import org.apache.iceberg.types.Types;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -124,6 +127,67 @@ public class TestFlinkScanSql extends TestFlinkSource {
     Expression filter = Expressions.and(Expressions.equal("dt", "2020-03-20"), Expressions.equal("id", 123));
     org.apache.iceberg.flink.TestHelpers.assertRecords(runWithFilter(
         filter, "where dt='2020-03-20' and id=123"), expectedRecords, TestFixtures.SCHEMA);
+  }
+
+  @Test
+  public void testNestProjection() throws Exception {
+    Types.MapType map = Types.MapType.ofOptional(
+        11, 12,
+        Types.IntegerType.get(),
+        Types.StringType.get()
+    );
+
+    Types.StructType struct = Types.StructType.of(
+        Types.NestedField.required(21, "a", Types.LongType.get()),
+        Types.NestedField.optional(22, "b", Types.LongType.get())
+    );
+
+    Types.StructType struct2 = Types.StructType.of(
+        Types.NestedField.optional(31, "a", Types.StringType.get())
+    );
+
+    Schema schema = new Schema(
+        Types.NestedField.required(1, "data", Types.StringType.get()),
+        Types.NestedField.required(2, "id", Types.LongType.get()),
+        Types.NestedField.required(3, "mp", map),
+        Types.NestedField.required(4, "st", struct),
+        Types.NestedField.required(5, "dt", Types.StringType.get()),
+        Types.NestedField.required(6, "st2", struct2)
+    );
+
+    PartitionSpec spec = PartitionSpec.builderFor(schema)
+        .identity("dt")
+        .bucket("id", 1)
+        .build();
+
+    Table table = catalog.createTable(TableIdentifier.of("default", "t"), schema, spec);
+
+    List<Record> writeRecords = RandomGenericData.generate(schema, 2, 0L);
+    writeRecords.get(0).set(1, 123L);
+    writeRecords.get(0).set(4, "2020-03-20");
+    writeRecords.get(1).set(1, 456L);
+    writeRecords.get(1).set(4, "2020-03-20");
+
+    GenericAppenderHelper helper = new GenericAppenderHelper(table, fileFormat, TEMPORARY_FOLDER);
+
+    List<Record> expectedRecords = Lists.newArrayList();
+    expectedRecords.add(writeRecords.get(0));
+    expectedRecords.add(writeRecords.get(1));
+
+    DataFile dataFile = helper.writeFile(TestHelpers.Row.of("2020-03-20", 0), writeRecords);
+    helper.appendToTable(dataFile);
+
+    List<Row> result = sql("SELECT id, st.a, st.b, st2.a, mp FROM t");
+
+    for (int i = 0; i < result.size(); i++) {
+      Row actorResult = result.get(i);
+      Record expectedResult = expectedRecords.get(i);
+      Assert.assertEquals("id must be equal!", expectedResult.get(1), actorResult.getField(0));
+      Assert.assertEquals("st.a must be equal!", ((Record) expectedResult.get(3)).get(0), actorResult.getField(1));
+      Assert.assertEquals("st.b must be equal!", ((Record) expectedResult.get(3)).get(1), actorResult.getField(2));
+      Assert.assertEquals("st2.a must be equal!", ((Record) expectedResult.get(5)).get(0), actorResult.getField(3));
+      Assert.assertEquals("mp must be equal!", expectedResult.get(2), actorResult.getField(4));
+    }
   }
 
   @Test

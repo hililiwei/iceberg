@@ -20,6 +20,7 @@
 package org.apache.iceberg.flink.sink;
 
 import java.util.List;
+import java.util.Map;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.iceberg.FileFormat;
@@ -57,6 +58,16 @@ public class RowDataTaskWriterFactory implements TaskWriterFactory<RowData> {
                                   FileFormat format,
                                   List<Integer> equalityFieldIds,
                                   boolean upsert) {
+    this(table, table.properties(), flinkSchema, targetFileSizeBytes, format, equalityFieldIds, upsert);
+  }
+
+  public RowDataTaskWriterFactory(Table table,
+                                  Map<String, String> properties,
+                                  RowType flinkSchema,
+                                  long targetFileSizeBytes,
+                                  FileFormat format,
+                                  List<Integer> equalityFieldIds,
+                                  boolean upsert) {
     this.table = table;
     this.schema = table.schema();
     this.flinkSchema = flinkSchema;
@@ -68,10 +79,10 @@ public class RowDataTaskWriterFactory implements TaskWriterFactory<RowData> {
     this.upsert = upsert;
 
     if (equalityFieldIds == null || equalityFieldIds.isEmpty()) {
-      this.appenderFactory = new FlinkAppenderFactory(schema, flinkSchema, table.properties(), spec);
+      this.appenderFactory = new FlinkAppenderFactory(schema, flinkSchema, properties, spec);
     } else {
       // TODO provide the ability to customize the equality-delete row schema.
-      this.appenderFactory = new FlinkAppenderFactory(schema, flinkSchema, table.properties(), spec,
+      this.appenderFactory = new FlinkAppenderFactory(schema, flinkSchema, properties, spec,
           ArrayUtil.toIntArray(equalityFieldIds), schema, null);
     }
   }

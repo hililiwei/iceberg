@@ -52,6 +52,7 @@ import org.apache.iceberg.flink.util.FlinkCompatibilityUtil;
 import org.apache.iceberg.io.WriteResult;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
+import org.apache.iceberg.relocated.com.google.common.collect.Maps;
 import org.apache.iceberg.types.TypeUtil;
 import org.apache.iceberg.util.PropertyUtil;
 import org.slf4j.Logger;
@@ -131,6 +132,7 @@ public class FlinkSink {
     private boolean upsert = false;
     private List<String> equalityFieldColumns = null;
     private String uidPrefix = null;
+    private Map<String, String> props = Maps.newHashMap();
 
     private Builder() {
     }
@@ -165,6 +167,11 @@ public class FlinkSink {
      */
     public Builder table(Table newTable) {
       this.table = newTable;
+      return this;
+    }
+
+    public Builder properties(Map<String, String> newProps) {
+      this.props = newProps;
       return this;
     }
 
@@ -288,7 +295,7 @@ public class FlinkSink {
 
       // Distribute the records from input data stream based on the write.distribution-mode.
       DataStream<RowData> distributeStream = distributeDataStream(
-          rowDataInput, table.properties(), table.spec(), table.schema(), flinkRowType);
+          rowDataInput, this.props, table.spec(), table.schema(), flinkRowType);
 
       // Add parallel writers that append rows to files
       SingleOutputStreamOperator<WriteResult> writerStream = appendWriter(distributeStream, flinkRowType);
@@ -310,6 +317,7 @@ public class FlinkSink {
      */
     @Deprecated
     public DataStreamSink<RowData> build() {
+      buildProperties();
       return chainIcebergOperators();
     }
 
@@ -319,6 +327,7 @@ public class FlinkSink {
      * @return {@link DataStreamSink} for sink.
      */
     public DataStreamSink<Void> append() {
+      buildProperties();
       return chainIcebergOperators();
     }
 
@@ -363,7 +372,7 @@ public class FlinkSink {
       }
 
       // Fallback to use upsert mode parsed from table properties if don't specify in job level.
-      boolean upsertMode = upsert || PropertyUtil.propertyAsBoolean(table.properties(),
+      boolean upsertMode = upsert || PropertyUtil.propertyAsBoolean(props,
           UPSERT_ENABLED, UPSERT_ENABLED_DEFAULT);
 
       // Validate the equality fields and partition fields if we enable the upsert mode.
@@ -381,7 +390,8 @@ public class FlinkSink {
         }
       }
 
-      IcebergStreamWriter<RowData> streamWriter = createStreamWriter(table, flinkRowType, equalityFieldIds, upsertMode);
+      IcebergStreamWriter<RowData> streamWriter = createStreamWriter(table, props, flinkRowType, equalityFieldIds,
+          upsertMode);
 
       int parallelism = writeParallelism == null ? input.getParallelism() : writeParallelism;
       SingleOutputStreamOperator<WriteResult> writerStream = input
@@ -430,6 +440,19 @@ public class FlinkSink {
           throw new RuntimeException("Unrecognized write.distribution-mode: " + writeMode);
       }
     }
+
+    private void buildProperties() {
+      if (table == null) {
+        return;
+      }
+      if (this.props.isEmpty()) {
+        this.props = table.properties();
+      } else {
+        Map<String, String> result = Maps.newHashMap(this.table.properties());
+        this.props.forEach((key, value) -> result.merge(key, value, (v1, v2) -> v2));
+        this.props = result;
+      }
+    }
   }
 
   static RowType toFlinkRowType(Schema schema, TableSchema requestedSchema) {
@@ -452,14 +475,21 @@ public class FlinkSink {
                                                          RowType flinkRowType,
                                                          List<Integer> equalityFieldIds,
                                                          boolean upsert) {
+    return createStreamWriter(table, table.properties(), flinkRowType, equalityFieldIds, upsert);
+  }
+
+  static IcebergStreamWriter<RowData> createStreamWriter(Table table,
+                                                         Map<String, String> props,
+                                                         RowType flinkRowType,
+                                                         List<Integer> equalityFieldIds,
+                                                         boolean upsert) {
     Preconditions.checkArgument(table != null, "Iceberg table should't be null");
-    Map<String, String> props = table.properties();
     long targetFileSize = getTargetFileSizeBytes(props);
     FileFormat fileFormat = getFileFormat(props);
 
     Table serializableTable = SerializableTable.copyOf(table);
     TaskWriterFactory<RowData> taskWriterFactory = new RowDataTaskWriterFactory(
-        serializableTable, flinkRowType, targetFileSize,
+        serializableTable, props, flinkRowType, targetFileSize,
         fileFormat, equalityFieldIds, upsert);
 
     return new IcebergStreamWriter<>(table.name(), taskWriterFactory);

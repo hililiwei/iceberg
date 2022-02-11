@@ -351,15 +351,7 @@ abstract class ManifestFilterManager<F extends ContentFile<F>> {
     boolean hasDeletedFiles = false;
     for (ManifestEntry<F> entry : reader.liveEntries()) {
       F file = entry.file();
-      boolean fileDelete = deletePaths.contains(file.path()) ||
-          dropPartitions.contains(file.specId(), file.partition()) ||
-          (isDelete && entry.sequenceNumber() > 0 && entry.sequenceNumber() < minSequenceNumber);
-      if (fileDelete || evaluator.rowsMightMatch(file)) {
-        ValidationException.check(
-            fileDelete || evaluator.rowsMustMatch(file),
-            "Cannot delete file where some, but not all, rows match filter %s: %s",
-            this.deleteExpression, file.path());
-
+      if (isFileDelete(evaluator, isDelete, entry, file)) {
         hasDeletedFiles = true;
         if (failAnyDelete) {
           throw new DeleteException(reader.spec().partitionToPath(file.partition()));
@@ -382,35 +374,23 @@ abstract class ManifestFilterManager<F extends ContentFile<F>> {
     try {
       ManifestWriter<F> writer = newManifestWriter(reader.spec());
       try {
-        reader.entries().forEach(entry -> {
+        reader.liveEntries().forEach(entry -> {
           F file = entry.file();
-          boolean fileDelete = deletePaths.contains(file.path()) ||
-              dropPartitions.contains(file.specId(), file.partition()) ||
-              (isDelete && entry.sequenceNumber() > 0 && entry.sequenceNumber() < minSequenceNumber);
-          if (entry.status() != ManifestEntry.Status.DELETED) {
-            if (fileDelete || evaluator.rowsMightMatch(file)) {
-              ValidationException.check(
-                  fileDelete || evaluator.rowsMustMatch(file),
-                  "Cannot delete file where some, but not all, rows match filter %s: %s",
-                  this.deleteExpression, file.path());
-
-              writer.delete(entry);
-
-              CharSequenceWrapper wrapper = CharSequenceWrapper.wrap(entry.file().path());
-              if (deletedPaths.contains(wrapper)) {
-                LOG.warn("Deleting a duplicate path from manifest {}: {}",
-                    manifest.path(), wrapper.get());
-                duplicateDeleteCount += 1;
-              } else {
-                // only add the file to deletes if it is a new delete
-                // this keeps the snapshot summary accurate for non-duplicate data
-                deletedFiles.add(entry.file().copyWithoutStats());
-              }
-              deletedPaths.add(wrapper);
-
+          if (isFileDelete(evaluator, isDelete, entry, file)) {
+            writer.delete(entry);
+            CharSequenceWrapper wrapper = CharSequenceWrapper.wrap(entry.file().path());
+            if (deletedPaths.contains(wrapper)) {
+              LOG.warn("Deleting a duplicate path from manifest {}: {}",
+                  manifest.path(), wrapper.get());
+              duplicateDeleteCount += 1;
             } else {
-              writer.existing(entry);
+              // only add the file to deletes if it is a new delete
+              // this keeps the snapshot summary accurate for non-duplicate data
+              deletedFiles.add(entry.file().copyWithoutStats());
             }
+            deletedPaths.add(wrapper);
+          } else {
+            writer.existing(entry);
           }
         });
       } finally {
@@ -429,6 +409,21 @@ abstract class ManifestFilterManager<F extends ContentFile<F>> {
     } catch (IOException e) {
       throw new RuntimeIOException(e, "Failed to close manifest writer");
     }
+  }
+
+  private boolean isFileDelete(PartitionAndMetricsEvaluator evaluator, boolean isDelete, ManifestEntry<F> entry,
+                               F file) {
+    boolean fileDelete = deletePaths.contains(file.path()) ||
+        dropPartitions.contains(file.specId(), file.partition()) ||
+        (isDelete && entry.sequenceNumber() > 0 && entry.sequenceNumber() < minSequenceNumber);
+    if (fileDelete || evaluator.rowsMightMatch(file)) {
+      ValidationException.check(
+          fileDelete || evaluator.rowsMustMatch(file),
+          "Cannot delete file where some, but not all, rows match filter %s: %s",
+          this.deleteExpression, file.path());
+      return true;
+    }
+    return false;
   }
 
   // an evaluator that checks whether rows in a file may/must match a given expression

@@ -1,20 +1,15 @@
 /*
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
- * specific language governing permissions and limitations
- * under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.apache.iceberg.spark;
@@ -49,7 +44,7 @@ import org.junit.BeforeClass;
 
 import static org.apache.hadoop.hive.conf.HiveConf.ConfVars.METASTOREURIS;
 
-public abstract class SparkTestBase {
+public abstract class SparkTestBase2 {
 
   protected static final Object ANY = new Object();
 
@@ -60,18 +55,18 @@ public abstract class SparkTestBase {
 
   @BeforeClass
   public static void startMetastoreAndSpark() {
-    SparkTestBase.metastore = new TestHiveMetastore();
-    metastore.start();
-    SparkTestBase.hiveConf = metastore.hiveConf();
+    SparkTestBase2.metastore = new TestHiveMetastore();
 
-    SparkTestBase.spark = SparkSession.builder()
+    SparkTestBase2.hiveConf = metastore.hiveConf();
+
+    SparkTestBase2.spark = SparkSession.builder()
         .master("local[2]")
         .config(SQLConf.PARTITION_OVERWRITE_MODE().key(), "dynamic")
         .config("spark.hadoop." + METASTOREURIS.varname, hiveConf.get(METASTOREURIS.varname))
         .enableHiveSupport()
         .getOrCreate();
 
-    SparkTestBase.catalog = (HiveCatalog)
+    SparkTestBase2.catalog = (HiveCatalog)
         CatalogUtil.loadCatalog(HiveCatalog.class.getName(), "hive", ImmutableMap.of(), hiveConf);
 
     try {
@@ -83,11 +78,11 @@ public abstract class SparkTestBase {
 
   @AfterClass
   public static void stopMetastoreAndSpark() throws Exception {
-    SparkTestBase.catalog = null;
+    SparkTestBase2.catalog = null;
     metastore.stop();
-    SparkTestBase.metastore = null;
+    SparkTestBase2.metastore = null;
     spark.stop();
-    SparkTestBase.spark = null;
+    SparkTestBase2.spark = null;
   }
 
   protected long waitUntilAfter(long timestampMillis) {

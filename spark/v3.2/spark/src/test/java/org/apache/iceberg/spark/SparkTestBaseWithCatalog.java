@@ -84,6 +84,10 @@ public abstract class SparkTestBaseWithCatalog extends SparkTestBase {
       spark.conf().set("spark.sql.catalog." + catalogName + ".warehouse", "file:" + warehouse);
     }
 
+    if (config.get("type").equalsIgnoreCase("hadoop")) {
+      metastore.start();
+    }
+
     this.tableName = (catalogName.equals("spark_catalog") ? "" : catalogName + ".") + "default.table";
 
     sql("CREATE NAMESPACE IF NOT EXISTS default");

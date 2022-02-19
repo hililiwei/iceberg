@@ -61,7 +61,7 @@ public abstract class SparkTestBase {
   @BeforeClass
   public static void startMetastoreAndSpark() {
     SparkTestBase.metastore = new TestHiveMetastore();
-    metastore.start();
+
     SparkTestBase.hiveConf = metastore.hiveConf();
 
     SparkTestBase.spark = SparkSession.builder()

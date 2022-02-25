@@ -613,4 +613,11 @@ public class TestFlinkTableSource extends FlinkTestBase {
     AssertHelpers.assertThrows("The NaN is not supported by flink now. ",
         NumberFormatException.class, () -> sql(sqlParseErrorLTE));
   }
+
+  @Test
+  public void test2() {
+    String sql2Literal = String.format("SELECT * FROM test_catalog.test_db.test_table.history ");
+    List<Row> result = sql(sql2Literal);
+    result.forEach(System.out::println);
+  }
 }

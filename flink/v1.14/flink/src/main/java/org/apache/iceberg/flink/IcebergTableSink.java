@@ -21,8 +21,8 @@ package org.apache.iceberg.flink;
 
 import java.util.List;
 import java.util.Map;
-import org.apache.flink.table.api.TableSchema;
-import org.apache.flink.table.api.constraints.UniqueConstraint;
+import org.apache.flink.table.catalog.ResolvedSchema;
+import org.apache.flink.table.catalog.UniqueConstraint;
 import org.apache.flink.table.connector.ChangelogMode;
 import org.apache.flink.table.connector.sink.DataStreamSinkProvider;
 import org.apache.flink.table.connector.sink.DynamicTableSink;
@@ -35,7 +35,7 @@ import org.apache.iceberg.relocated.com.google.common.collect.ImmutableList;
 
 public class IcebergTableSink implements DynamicTableSink, SupportsPartitioning, SupportsOverwrite {
   private final TableLoader tableLoader;
-  private final TableSchema tableSchema;
+  private final ResolvedSchema tableSchema;
 
   private boolean overwrite = false;
 
@@ -45,7 +45,7 @@ public class IcebergTableSink implements DynamicTableSink, SupportsPartitioning,
     this.overwrite = toCopy.overwrite;
   }
 
-  public IcebergTableSink(TableLoader tableLoader, TableSchema tableSchema) {
+  public IcebergTableSink(TableLoader tableLoader, ResolvedSchema tableSchema) {
     this.tableLoader = tableLoader;
     this.tableSchema = tableSchema;
   }

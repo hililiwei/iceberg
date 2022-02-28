@@ -22,8 +22,10 @@ package org.apache.iceberg.flink.source;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.TableSchema;
+import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.types.Row;
 import org.apache.iceberg.Schema;
@@ -88,6 +90,13 @@ public class TestFlinkInputFormat extends TestFlinkSource {
         .tableLoader(tableLoader())
         .project(projectedSchema)
         .buildFormat());
+
+    DataStream<RowData> batch = FlinkSource.forRowData()
+        .env(env)
+        .tableLoader(tableLoader)
+        .flinkConf(configuration)
+        .streaming(true)
+        .build();
 
     List<Row> expected = Lists.newArrayList();
     for (Record record : writeRecords) {

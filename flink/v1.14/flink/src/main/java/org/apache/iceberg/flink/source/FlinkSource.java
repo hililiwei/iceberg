@@ -31,6 +31,7 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.api.config.ExecutionConfigOptions;
+import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.data.RowData;
 import org.apache.hadoop.fs.Path;
 import org.apache.iceberg.Schema;
@@ -39,6 +40,7 @@ import org.apache.iceberg.TableScan;
 import org.apache.iceberg.encryption.EncryptionManager;
 import org.apache.iceberg.expressions.Expression;
 import org.apache.iceberg.flink.FlinkConfigOptions;
+import org.apache.iceberg.flink.FlinkResolvedSchemaUtil;
 import org.apache.iceberg.flink.FlinkSchemaUtil;
 import org.apache.iceberg.flink.TableLoader;
 import org.apache.iceberg.flink.util.FlinkCompatibilityUtil;
@@ -84,6 +86,7 @@ public class FlinkSource {
     private Table table;
     private TableLoader tableLoader;
     private TableSchema projectedSchema;
+    private ResolvedSchema projectedResolvedSchema;
     private ReadableConfig readableConfig = new Configuration();
     private final ScanContext.Builder contextBuilder = ScanContext.builder();
     private Boolean exposeLocality;
@@ -100,6 +103,7 @@ public class FlinkSource {
 
     public Builder env(StreamExecutionEnvironment newEnv) {
       this.env = newEnv;
+
       return this;
     }
 
@@ -108,8 +112,17 @@ public class FlinkSource {
       return this;
     }
 
+    /**
+     * @deprecated use {@link Builder#project(org.apache.flink.table.catalog.ResolvedSchema)}
+     */
+    @Deprecated
     public Builder project(TableSchema schema) {
       this.projectedSchema = schema;
+      return this;
+    }
+
+    public Builder project(ResolvedSchema schema) {
+      this.projectedResolvedSchema = schema;
       return this;
     }
 
@@ -206,11 +219,14 @@ public class FlinkSource {
         encryption = table.encryption();
       }
 
-      if (projectedSchema == null) {
+      if (projectedSchema == null && projectedResolvedSchema == null) {
         contextBuilder.project(icebergSchema);
+      } else if (projectedResolvedSchema != null) {
+        contextBuilder.project(FlinkResolvedSchemaUtil.convert(icebergSchema, projectedResolvedSchema));
       } else {
         contextBuilder.project(FlinkSchemaUtil.convert(icebergSchema, projectedSchema));
       }
+
       contextBuilder.exposeLocality(localityEnabled());
 
       return new FlinkInputFormat(tableLoader, icebergSchema, io, encryption, contextBuilder.build());

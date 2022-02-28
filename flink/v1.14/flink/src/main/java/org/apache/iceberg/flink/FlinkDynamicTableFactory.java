@@ -30,6 +30,8 @@ import org.apache.flink.table.catalog.CatalogDatabaseImpl;
 import org.apache.flink.table.catalog.CatalogTable;
 import org.apache.flink.table.catalog.ObjectIdentifier;
 import org.apache.flink.table.catalog.ObjectPath;
+import org.apache.flink.table.catalog.ResolvedCatalogTable;
+import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.catalog.exceptions.DatabaseAlreadyExistException;
 import org.apache.flink.table.catalog.exceptions.TableAlreadyExistException;
 import org.apache.flink.table.connector.sink.DynamicTableSink;
@@ -96,9 +98,11 @@ public class FlinkDynamicTableFactory implements DynamicTableSinkFactory, Dynami
   @Override
   public DynamicTableSource createDynamicTableSource(Context context) {
     ObjectIdentifier objectIdentifier = context.getObjectIdentifier();
-    CatalogTable catalogTable = loadCatalogTable(context);
+
+    ResolvedCatalogTable catalogTable = context.getCatalogTable();
     Map<String, String> tableProps = catalogTable.getOptions();
-    TableSchema tableSchema = TableSchemaUtils.getPhysicalSchema(catalogTable.getSchema());
+
+    ResolvedSchema resolvedSchema = catalogTable.getResolvedSchema();
 
     TableLoader tableLoader;
     if (catalog != null) {
@@ -108,7 +112,7 @@ public class FlinkDynamicTableFactory implements DynamicTableSinkFactory, Dynami
           objectIdentifier.getObjectName());
     }
 
-    return new IcebergTableSource(tableLoader, tableSchema, tableProps, context.getConfiguration());
+    return new IcebergTableSource(tableLoader, resolvedSchema, tableProps, context.getConfiguration());
   }
 
   @Override

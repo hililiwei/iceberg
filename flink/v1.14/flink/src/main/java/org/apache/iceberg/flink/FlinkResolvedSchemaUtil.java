@@ -19,9 +19,14 @@
 
 package org.apache.iceberg.flink;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import org.apache.flink.table.api.TableSchema;
+import org.apache.flink.table.catalog.Column;
+import org.apache.flink.table.catalog.ResolvedSchema;
+import org.apache.flink.table.catalog.UniqueConstraint;
 import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.table.types.utils.TypeConversions;
@@ -33,33 +38,16 @@ import org.apache.iceberg.types.Type;
 import org.apache.iceberg.types.TypeUtil;
 import org.apache.iceberg.types.Types;
 
-/**
- * Converter between Flink types and Iceberg type.
- * The conversion is not a 1:1 mapping that not allows back-and-forth conversion. So some information might get lost
- * during the back-and-forth conversion.
- * <p>
- * This inconsistent types:
- * <ul>
- *   <li>map Iceberg UUID type to Flink BinaryType(16)</li>
- *   <li>map Flink VarCharType(_) and CharType(_) to Iceberg String type</li>
- *   <li>map Flink VarBinaryType(_) to Iceberg Binary type</li>
- *   <li>map Flink TimeType(_) to Iceberg Time type (microseconds)</li>
- *   <li>map Flink TimestampType(_) to Iceberg Timestamp without zone type (microseconds)</li>
- *   <li>map Flink LocalZonedTimestampType(_) to Iceberg Timestamp with zone type (microseconds)</li>
- *   <li>map Flink MultiSetType to Iceberg Map type(element, int)</li>
- * </ul>
- * <p>
- */
-public class FlinkSchemaUtil {
+public class FlinkResolvedSchemaUtil {
 
-  private FlinkSchemaUtil() {
+  private FlinkResolvedSchemaUtil() {
   }
 
   /**
    * Convert the flink table schema to apache iceberg schema.
    */
-  public static Schema convert(TableSchema schema) {
-    LogicalType schemaType = schema.toRowDataType().getLogicalType();
+  public static Schema convert(ResolvedSchema schema) {
+    LogicalType schemaType = schema.toPhysicalRowDataType().getLogicalType();
     Preconditions.checkArgument(schemaType instanceof RowType, "Schema logical type should be RowType.");
 
     RowType root = (RowType) schemaType;
@@ -69,8 +57,7 @@ public class FlinkSchemaUtil {
     return freshIdentifierFieldIds(iSchema, schema);
   }
 
-
-  private static Schema freshIdentifierFieldIds(Schema iSchema, TableSchema schema) {
+  private static Schema freshIdentifierFieldIds(Schema iSchema, ResolvedSchema schema) {
     // Locate the identifier field id list.
     Set<Integer> identifierFieldIds = Sets.newHashSet();
     if (schema.getPrimaryKey().isPresent()) {
@@ -93,12 +80,12 @@ public class FlinkSchemaUtil {
    * Data types, field order, and nullability will match the Flink type. This conversion may return
    * a schema that is not compatible with base schema.
    *
-   * @param baseSchema a Schema on which conversion is based
+   * @param baseSchema  a Schema on which conversion is based
    * @param flinkSchema a Flink TableSchema
    * @return the equivalent Schema
    * @throws IllegalArgumentException if the type cannot be converted or there are missing ids
    */
-  public static Schema convert(Schema baseSchema, TableSchema flinkSchema) {
+  public static Schema convert(Schema baseSchema, ResolvedSchema flinkSchema) {
     // convert to a type with fresh ids
     Types.StructType struct = convert(flinkSchema).asStruct();
     // reassign ids to match the base schema
@@ -136,12 +123,14 @@ public class FlinkSchemaUtil {
    * @param rowType a RowType
    * @return Flink TableSchema
    */
-  public static TableSchema toSchema(RowType rowType) {
-    TableSchema.Builder builder = TableSchema.builder();
+  public static ResolvedSchema toSchema(RowType rowType) {
+    List<Column> columns = Lists.newArrayList();
     for (RowType.RowField field : rowType.getFields()) {
-      builder.field(field.getName(), TypeConversions.fromLogicalToDataType(field.getType()));
+      Column.PhysicalColumn physicalColumn =
+          Column.physical(field.getName(), TypeConversions.fromLogicalToDataType(field.getType()));
+      columns.add(physicalColumn);
     }
-    return builder.build();
+    return ResolvedSchema.of(columns);
   }
 
   /**
@@ -150,27 +139,33 @@ public class FlinkSchemaUtil {
    * @param schema iceberg schema to convert.
    * @return Flink TableSchema.
    */
-  public static TableSchema toSchema(Schema schema) {
-    TableSchema.Builder builder = TableSchema.builder();
+  public static ResolvedSchema toSchema(Schema schema) {
+    List<Column> columns = Lists.newArrayList();
+    UniqueConstraint uniqueConstraint = null;
 
     // Add columns.
     for (RowType.RowField field : convert(schema).getFields()) {
-      builder.field(field.getName(), TypeConversions.fromLogicalToDataType(field.getType()));
+      Column.PhysicalColumn physicalColumn =
+          Column.physical(field.getName(), TypeConversions.fromLogicalToDataType(field.getType()));
+      columns.add(physicalColumn);
     }
 
     // Add primary key.
     Set<Integer> identifierFieldIds = schema.identifierFieldIds();
     if (!identifierFieldIds.isEmpty()) {
-      List<String> columns = Lists.newArrayListWithExpectedSize(identifierFieldIds.size());
+      List<String> idColumns = Lists.newArrayListWithExpectedSize(identifierFieldIds.size());
       for (Integer identifierFieldId : identifierFieldIds) {
         String columnName = schema.findColumnName(identifierFieldId);
         Preconditions.checkNotNull(columnName, "Cannot find field with id %s in schema %s", identifierFieldId, schema);
 
-        columns.add(columnName);
+        idColumns.add(columnName);
       }
-      builder.primaryKey(columns.toArray(new String[0]));
+      uniqueConstraint = UniqueConstraint.primaryKey(UUID.randomUUID().toString(), idColumns);
+    }
+    if (uniqueConstraint != null) {
+      return new ResolvedSchema(columns, Collections.emptyList(), uniqueConstraint);
     }
 
-    return builder.build();
+    return ResolvedSchema.of(columns);
   }
 }

@@ -45,11 +45,12 @@ public class RowDataNestProjection implements RowData {
   private final int[][] projectedFields;
   private RowData rowData;
 
-  private RowDataNestProjection(RowType rowType,
-                                Types.StructType schema,
-                                Types.StructType rowStruct,
-                                Types.StructType projectType,
-                                int[][] projectedFields) {
+  private RowDataNestProjection(
+      RowType rowType,
+      Types.StructType schema,
+      Types.StructType rowStruct,
+      Types.StructType projectType,
+      int[][] projectedFields) {
     this.projectedFields = projectedFields;
 
     this.getters = new FieldGetter[projectedFields.length];
@@ -65,10 +66,11 @@ public class RowDataNestProjection implements RowData {
     }
   }
 
-  private RowDataNestProjection(RowType rowType,
-                                Types.StructType schema,
-                                Types.StructType projectType,
-                                int[][] projectedFields) {
+  private RowDataNestProjection(
+      RowType rowType,
+      Types.StructType schema,
+      Types.StructType projectType,
+      int[][] projectedFields) {
     this.projectedFields = projectedFields;
 
     this.getters = new FieldGetter[projectType.fields().size()];
@@ -85,18 +87,20 @@ public class RowDataNestProjection implements RowData {
     }
   }
 
-  private static FieldGetter createFieldGetter(RowType rowType,
-                                               Types.NestedField rowField,
-                                               int rowTypePosition,
-                                               Types.StructType projectFieldsType,
-                                               Types.NestedField projectField,
-                                               int projectFieldPosition,
-                                               int[][] projectedFields,
-                                               int[] projectedFieldOne) {
+  private static FieldGetter createFieldGetter(
+      RowType rowType,
+      Types.NestedField rowField,
+      int rowTypePosition,
+      Types.StructType projectFieldsType,
+      Types.NestedField projectField,
+      int projectFieldPosition,
+      int[][] projectedFields,
+      int[] projectedFieldOne) {
     switch (projectField.type().typeId()) {
       case STRUCT:
         if (projectedFields == null || projectedFields[projectFieldPosition].length <= 1) {
-          return RowData.createFieldGetter(rowType.getTypeAt(rowTypePosition),
+          return RowData.createFieldGetter(
+              rowType.getTypeAt(rowTypePosition),
               projectFieldsType.fields().indexOf(projectField));
         }
         RowType nestedRowType = (RowType) rowType.getTypeAt(rowTypePosition);
@@ -122,7 +126,8 @@ public class RowDataNestProjection implements RowData {
             "Cannot project a partial map key or value with non-primitive type. Trying to project <%s> out of <%s>",
             projectField, rowField);
 
-        return RowData.createFieldGetter(rowType.getTypeAt(rowTypePosition),
+        return RowData.createFieldGetter(
+            rowType.getTypeAt(rowTypePosition),
             projectFieldsType.fields().indexOf(projectField));
 
       case LIST:
@@ -135,10 +140,12 @@ public class RowDataNestProjection implements RowData {
             "Cannot project a partial list element with non-primitive type. Trying to project <%s> out of <%s>",
             projectField, rowField);
 
-        return RowData.createFieldGetter(rowType.getTypeAt(rowTypePosition),
+        return RowData.createFieldGetter(
+            rowType.getTypeAt(rowTypePosition),
             projectFieldsType.fields().indexOf(projectField));
       default:
-        return RowData.createFieldGetter(rowType.getTypeAt(rowTypePosition),
+        return RowData.createFieldGetter(
+            rowType.getTypeAt(rowTypePosition),
             projectFieldsType.fields().indexOf(projectField));
     }
   }
@@ -149,16 +156,18 @@ public class RowDataNestProjection implements RowData {
         projectedFields);
   }
 
-  public static RowDataNestProjection create(RowType rowType,
-                                             Types.StructType schema,
-                                             Types.StructType rowStructType,
-                                             Types.StructType projectedSchema,
-                                             int[][] projectedFields) {
+  public static RowDataNestProjection create(
+      RowType rowType,
+      Types.StructType schema,
+      Types.StructType rowStructType,
+      Types.StructType projectedSchema,
+      int[][] projectedFields) {
     return new RowDataNestProjection(rowType, schema, rowStructType, projectedSchema, projectedFields);
   }
 
-  public static RowDataNestProjection create(RowType rowType, Types.StructType schema, Types.StructType projectedSchema,
-                                             int[][] projectedFields) {
+  public static RowDataNestProjection create(
+      RowType rowType, Types.StructType schema, Types.StructType projectedSchema,
+      int[][] projectedFields) {
     return new RowDataNestProjection(rowType, schema, projectedSchema, projectedFields);
   }
 

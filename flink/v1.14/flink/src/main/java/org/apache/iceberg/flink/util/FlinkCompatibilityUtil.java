@@ -43,7 +43,7 @@ public class FlinkCompatibilityUtil {
 
   /** Returns true if there are only physical columns in the given {@link TableSchema}. */
   public static boolean containsPhysicalColumnsOnly(TableSchema schema) {
-    Preconditions.checkNotNull(schema);
+    Preconditions.checkNotNull(schema, "The table schema can not be null!");
     return schema.getTableColumns().stream().allMatch(TableColumn::isPhysical);
   }
 }

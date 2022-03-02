@@ -42,7 +42,6 @@ import org.apache.iceberg.types.Types;
  */
 public class RowDataNestProjection implements RowData {
   private final FieldGetter[] getters;
-  private final boolean nestFlat;
   private final int[][] projectedFields;
   private RowData rowData;
 
@@ -50,10 +49,8 @@ public class RowDataNestProjection implements RowData {
                                 Types.StructType schema,
                                 Types.StructType rowStruct,
                                 Types.StructType projectType,
-                                int[][] projectedFields,
-                                boolean nestFlat) {
+                                int[][] projectedFields) {
     this.projectedFields = projectedFields;
-    this.nestFlat = nestFlat;
 
     this.getters = new FieldGetter[projectedFields.length];
     for (int i = 0; i < getters.length; i++) {
@@ -71,10 +68,8 @@ public class RowDataNestProjection implements RowData {
   private RowDataNestProjection(RowType rowType,
                                 Types.StructType schema,
                                 Types.StructType projectType,
-                                int[][] projectedFields,
-                                boolean nestFlat) {
+                                int[][] projectedFields) {
     this.projectedFields = projectedFields;
-    this.nestFlat = nestFlat;
 
     this.getters = new FieldGetter[projectType.fields().size()];
     for (int i = 0; i < getters.length; i++) {
@@ -105,15 +100,14 @@ public class RowDataNestProjection implements RowData {
               projectFieldsType.fields().indexOf(projectField));
         }
         RowType nestedRowType = (RowType) rowType.getTypeAt(rowTypePosition);
+        int[] target = new int[projectedFieldOne.length - 1];
+        System.arraycopy(projectedFieldOne, 1, target, 0, target.length);
+        int[][] temp = {target};
+        int rowIndex = projectFieldsType.fields().indexOf(projectField);
         return row -> {
-          int[] target = new int[projectedFieldOne.length - 1];
-          System.arraycopy(projectedFieldOne, 1, target, 0, target.length);
-          int[][] temp = {target};
-          int rowIndex = projectFieldsType.fields().indexOf(projectField);
-          RowData nestedRow = rowIndex < 0 ? null : row.getRow(rowIndex,  nestedRowType.getFieldCount());
-
+          RowData nestedRow = rowIndex < 0 ? null : row.getRow(rowIndex, nestedRowType.getFieldCount());
           return RowDataNestProjection
-              .create(nestedRowType, rowField.type().asStructType(), projectField.type().asStructType(), temp, true)
+              .create(nestedRowType, rowField.type().asStructType(), projectField.type().asStructType(), temp)
               .wrap(nestedRow);
         };
       case MAP:
@@ -152,21 +146,20 @@ public class RowDataNestProjection implements RowData {
   public static RowDataNestProjection create(Schema schema, Schema projectedSchema, int[][] projectedFields) {
     return RowDataNestProjection.create(FlinkSchemaUtil.convert(schema), schema.asStruct(), schema.asStruct(),
         projectedSchema.asStruct(),
-        projectedFields, true);
+        projectedFields);
   }
 
   public static RowDataNestProjection create(RowType rowType,
                                              Types.StructType schema,
                                              Types.StructType rowStructType,
                                              Types.StructType projectedSchema,
-                                             int[][] projectedFields,
-                                             boolean nestFlat) {
-    return new RowDataNestProjection(rowType, schema, rowStructType, projectedSchema, projectedFields, nestFlat);
+                                             int[][] projectedFields) {
+    return new RowDataNestProjection(rowType, schema, rowStructType, projectedSchema, projectedFields);
   }
 
   public static RowDataNestProjection create(RowType rowType, Types.StructType schema, Types.StructType projectedSchema,
-                                             int[][] projectedFields, boolean nestFlat) {
-    return new RowDataNestProjection(rowType, schema, projectedSchema, projectedFields, nestFlat);
+                                             int[][] projectedFields) {
+    return new RowDataNestProjection(rowType, schema, projectedSchema, projectedFields);
   }
 
   public RowData wrap(RowData row) {
@@ -176,7 +169,7 @@ public class RowDataNestProjection implements RowData {
 
   private Object getValue(int pos) {
     Object fieldValue = getters[pos].getFieldOrNull(rowData);
-    while (nestFlat && fieldValue != null && fieldValue.getClass().equals(RowDataNestProjection.class)) {
+    while (fieldValue != null && fieldValue.getClass().equals(RowDataNestProjection.class)) {
       RowDataNestProjection rowDataNest = (RowDataNestProjection) fieldValue;
       fieldValue = rowDataNest.getters[rowDataNest.projectedFields[0][0]].getFieldOrNull(rowDataNest);
     }

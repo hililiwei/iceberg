@@ -177,7 +177,7 @@ public class TestFlinkScanSql extends TestFlinkSource {
     DataFile dataFile = helper.writeFile(TestHelpers.Row.of("2020-03-20", 0), writeRecords);
     helper.appendToTable(dataFile);
 
-    List<Row> result = sql("SELECT id,st.a,st.b,st2.a,mp FROM t ");
+    List<Row> result = sql("SELECT id, st.a, st.b, st2.a, mp FROM t");
 
     for (int i = 0; i < result.size(); i++) {
       Row actorResult = result.get(i);

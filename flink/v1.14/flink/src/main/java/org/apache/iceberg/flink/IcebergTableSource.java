@@ -41,6 +41,7 @@ import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.table.types.utils.DataTypeUtils;
 import org.apache.iceberg.expressions.Expression;
 import org.apache.iceberg.flink.source.FlinkSource;
+import org.apache.iceberg.flink.util.FlinkCompatibilityUtil;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableList;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
@@ -174,7 +175,7 @@ public class IcebergTableSource
 
   private static TableSchema projectSchema(TableSchema tableSchema, int[] projectedFields) {
     Preconditions.checkArgument(
-        org.apache.flink.table.utils.TableSchemaUtils.containsPhysicalColumnsOnly(tableSchema),
+        FlinkCompatibilityUtil.containsPhysicalColumnsOnly(tableSchema),
         "Projection is only supported for physical columns.");
     TableSchema.Builder builder = TableSchema.builder();
 

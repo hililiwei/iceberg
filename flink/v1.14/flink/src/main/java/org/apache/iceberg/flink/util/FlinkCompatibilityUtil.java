@@ -21,9 +21,11 @@ package org.apache.iceberg.flink.util;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.table.api.TableColumn;
+import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.runtime.typeutils.InternalTypeInfo;
 import org.apache.flink.table.types.logical.RowType;
+import org.apache.flink.util.Preconditions;
 
 /**
  * This is a small util class that try to hide calls to Flink
@@ -39,7 +41,9 @@ public class FlinkCompatibilityUtil {
     return InternalTypeInfo.of(rowType);
   }
 
-  public static boolean isPhysicalColumn(TableColumn column) {
-    return column.isPhysical();
+  /** Returns true if there are only physical columns in the given {@link TableSchema}. */
+  public static boolean containsPhysicalColumnsOnly(TableSchema schema) {
+    Preconditions.checkNotNull(schema);
+    return schema.getTableColumns().stream().allMatch(TableColumn::isPhysical);
   }
 }

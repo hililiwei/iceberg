@@ -123,7 +123,7 @@ class OrcFileAppender<D> implements FileAppender<D> {
       throw new UncheckedIOException(String.format("Can't get stripes from file %s", file.location()), e);
     }
 
-    // This value is estimated, including the default max bytes in batch(not actual).
+    // This value is estimated, not actual.
     return dataLength + estimateMemory + batch.size;
   }
 

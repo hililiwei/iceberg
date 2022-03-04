@@ -35,7 +35,7 @@ import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.rules.TemporaryFolder;
 
-public abstract class SparkTestBaseWithCatalog extends SparkTestBase {
+public abstract class SparkTestBaseWithCatalog extends SparkTestBase2 {
   private static File warehouse = null;
 
   @BeforeClass
@@ -82,6 +82,10 @@ public abstract class SparkTestBaseWithCatalog extends SparkTestBase {
 
     if (config.get("type").equalsIgnoreCase("hadoop")) {
       spark.conf().set("spark.sql.catalog." + catalogName + ".warehouse", "file:" + warehouse);
+    }
+
+    if (config.get("type").equalsIgnoreCase("hive")) {
+      metastore.start();
     }
 
     this.tableName = (catalogName.equals("spark_catalog") ? "" : catalogName + ".") + "default.table";

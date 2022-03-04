@@ -179,7 +179,7 @@ class OrcFileAppender<D> implements FileAppender<D> {
 
   private TreeWriter treeWriterHiddenInORC() {
     DynFields.BoundField<TreeWriter> treeWriterFiled =
-            DynFields.builder().hiddenImpl(writer.getClass(), "treeWriter").build(writer);
+        DynFields.builder().hiddenImpl(writer.getClass(), "treeWriter").build(writer);
     return treeWriterFiled.get();
   }
 }

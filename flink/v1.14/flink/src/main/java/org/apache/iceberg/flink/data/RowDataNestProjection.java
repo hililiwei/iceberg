@@ -19,6 +19,7 @@
 
 package org.apache.iceberg.flink.data;
 
+import java.util.Map;
 import org.apache.flink.table.data.ArrayData;
 import org.apache.flink.table.data.DecimalData;
 import org.apache.flink.table.data.MapData;
@@ -26,30 +27,91 @@ import org.apache.flink.table.data.RawValueData;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.StringData;
 import org.apache.flink.table.data.TimestampData;
+import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.types.RowKind;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.flink.FlinkSchemaUtil;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
+import org.apache.iceberg.relocated.com.google.common.collect.Maps;
 import org.apache.iceberg.types.Types;
 
-/**
- * Projects a (possibly nested) row data type, converts the original field obtained from the file to the flink output.
- *
- * <p>For example, original data with fields: {@code [id:Int,st:Struct[a:String,b:String] ...]}, Output
- * projection Field: {@code [id,st.a]} with path: [[0],[1,0]], For the {@code st}(nested type) field, {@code a} is
- * projected by taking it out of the nested body as an independent field.
- */
 public class RowDataNestProjection implements RowData {
   private final FieldGetter[] getters;
   private final int[][] projectedFields;
   private RowData rowData;
+  private Map<Integer, Object> valueCache = Maps.newHashMap();
 
-  private RowDataNestProjection(
-      RowType rowType,
-      Types.StructType schema,
-      Types.StructType rowStruct,
-      Types.StructType projectType,
+  /**
+   * Projects a (possibly nested) row data type, converts the original field obtained from the file to the flink output.
+   * This projection will not project the nested children types of repeated types like lists and maps, but does
+   * project nested type, flattening it out.
+   *
+   * <p>
+   * For example, original data with fields: {@code [id:Int,st:Struct[a:String,b:String] ...]}, Output
+   * projection Field: {@code [id,st.a]} with path: [[0],[1,0]], For the {@code st}(nested type) field, {@code a} is
+   * projected by taking it out of the nested body as an independent field.
+   *
+   * @param schema schema of rows wrapped by this projection
+   * @param projectedSchema result schema of the projected rows
+   * @param projectedFields result fields index of the projected rows
+   * @return a wrapper to project rows
+   */
+  public static RowDataNestProjection create(Schema schema, Schema projectedSchema, int[][] projectedFields) {
+    return new RowDataNestProjection(FlinkSchemaUtil.convert(schema), schema.asStruct(), projectedSchema.asStruct(),
+        projectedFields);
+  }
+
+  /**
+   * Projects a (possibly nested) row data type, converts the original field obtained from the file to the flink output.
+   * This projection will not project the nested children types of repeated types like lists and maps, but does
+   * project nested type, flattening it out.
+   *
+   * <p>
+   * For example, original data with fields: {@code [id:Int,st:Struct[a:String,b:String] ...]}, Output
+   * projection Field: {@code [id,st.a]} with path: [[0],[1,0]], For the {@code st}(nested type) field, {@code a} is
+   * projected by taking it out of the nested body as an independent field.
+   *
+   * @param schema schema of rows wrapped by this projection
+   * @param projectedSchema result schema of the projected rows
+   * @param projectedFields result fields index of the projected rows
+   * @param projectedField field index of the projected fields
+   * @return a wrapper to project rows
+   */
+  public static RowDataNestProjection create(RowType rowType, Types.StructType schema, Types.StructType projectedSchema,
+      int[][] projectedFields, int[] projectedField) {
+    return new RowDataNestProjection(rowType, schema, projectedSchema, projectedFields, projectedField);
+  }
+
+  /**
+   * Creates a projecting wrapper for {@link RowData} rows.
+   * <p>
+   * This projection will not project the nested children types of repeated types like lists and maps.
+   *
+   * @param schema schema of rows wrapped by this projection
+   * @param projectedSchema result schema of the projected rows
+   * @return a wrapper to project rows
+   */
+  public static RowDataNestProjection create(Schema schema, Schema projectedSchema) {
+    return RowDataNestProjection.create(FlinkSchemaUtil.convert(schema), schema.asStruct(), projectedSchema.asStruct());
+  }
+
+  /**
+   * Creates a projecting wrapper for {@link RowData} rows.
+   * <p>
+   * This projection will not project the nested children types of repeated types like lists and maps.
+   *
+   * @param rowType flink row type of rows wrapped by this projection
+   * @param schema schema of rows wrapped by this projection
+   * @param projectedSchema result schema of the projected rows
+   * @return a wrapper to project rows
+   */
+  public static RowDataNestProjection create(RowType rowType, Types.StructType schema,
+      Types.StructType projectedSchema) {
+    return new RowDataNestProjection(rowType, schema, projectedSchema);
+  }
+
+  private RowDataNestProjection(RowType rowType, Types.StructType schema, Types.StructType projectFieldsType,
       int[][] projectedFields) {
     this.projectedFields = projectedFields;
 
@@ -58,131 +120,166 @@ public class RowDataNestProjection implements RowData {
       int[] projectedFieldOne = projectedFields[i];
       int fieldIndex = projectedFieldOne[0];
 
-      Types.NestedField projectField = rowStruct.fields().get(fieldIndex);
+      Types.NestedField projectField = schema.fields().get(fieldIndex);
       Types.NestedField rowField = schema.field(projectField.fieldId());
 
-      getters[i] = createFieldGetter(rowType, rowField, fieldIndex, projectType, projectField, i, projectedFields,
+      getters[i] = createFieldGetter(rowType, rowField, fieldIndex, projectFieldsType, projectField, projectedFields,
           projectedFieldOne);
     }
   }
 
-  private RowDataNestProjection(
-      RowType rowType,
-      Types.StructType schema,
-      Types.StructType projectType,
-      int[][] projectedFields) {
+  private RowDataNestProjection(RowType rowType, Types.StructType schema, Types.StructType projectFieldsType,
+      int[][] projectedFields, int[] projectedField) {
     this.projectedFields = projectedFields;
 
-    this.getters = new FieldGetter[projectType.fields().size()];
-    for (int i = 0; i < getters.length; i++) {
-      int[] projectedFieldOne = projectedFields[0];
-      int fieldIndex = projectedFieldOne[0];
-      if (i == fieldIndex) {
-        Types.NestedField projectField = projectType.fields().get(i);
-        Types.NestedField rowField = schema.field(projectField.fieldId());
+    this.getters = new FieldGetter[projectFieldsType.fields().size()];
+    int fieldIndex = projectedField[0];
+    Types.NestedField projectField = projectFieldsType.fields().get(fieldIndex);
+    Types.NestedField rowField = schema.field(projectField.fieldId());
 
-        getters[i] = createFieldGetter(rowType, rowField, i, projectType, projectField, i, projectedFields,
-            projectedFieldOne);
-      }
+    getters[fieldIndex] =
+        createFieldGetter(rowType, rowField, fieldIndex, projectFieldsType, projectField, projectedFields,
+            projectedField);
+  }
+
+  private RowDataNestProjection(RowType rowType, Types.StructType rowStruct, Types.StructType projectType) {
+    this.projectedFields = null;
+
+    Map<Integer, Integer> fieldIdToPosition = Maps.newHashMap();
+    for (int i = 0; i < rowStruct.fields().size(); i++) {
+      fieldIdToPosition.put(rowStruct.fields().get(i).fieldId(), i);
+    }
+
+    this.getters = new RowData.FieldGetter[projectType.fields().size()];
+    for (int i = 0; i < getters.length; i++) {
+      Types.NestedField projectField = projectType.fields().get(i);
+      Types.NestedField rowField = rowStruct.field(projectField.fieldId());
+
+      Preconditions.checkNotNull(rowField,
+          "Cannot locate the project field <%s> in the iceberg struct <%s>", projectField, rowStruct);
+
+      getters[i] = createFieldGetter(rowType, fieldIdToPosition.get(projectField.fieldId()), rowField, projectField);
     }
   }
 
-  private static FieldGetter createFieldGetter(
-      RowType rowType,
+  private static FieldGetter createFieldGetter(RowType rowType,
       Types.NestedField rowField,
       int rowTypePosition,
       Types.StructType projectFieldsType,
       Types.NestedField projectField,
-      int projectFieldPosition,
       int[][] projectedFields,
-      int[] projectedFieldOne) {
+      int[] projectedField) {
     switch (projectField.type().typeId()) {
       case STRUCT:
-        if (projectedFields == null || projectedFields[projectFieldPosition].length <= 1) {
-          return RowData.createFieldGetter(
-              rowType.getTypeAt(rowTypePosition),
+        if (projectedFields == null || projectedField.length <= 1) {
+          return RowData.createFieldGetter(rowType.getTypeAt(rowTypePosition),
               projectFieldsType.fields().indexOf(projectField));
         }
+
         RowType nestedRowType = (RowType) rowType.getTypeAt(rowTypePosition);
-        int[] target = new int[projectedFieldOne.length - 1];
-        System.arraycopy(projectedFieldOne, 1, target, 0, target.length);
-        int[][] temp = {target};
-        int rowIndex = projectFieldsType.fields().indexOf(projectField);
+
+        int[] projectedFieldPath = new int[projectedField.length - 1];
+        System.arraycopy(projectedField, 1, projectedFieldPath, 0, projectedFieldPath.length);
+
+        RowType nestedRowTypeTemp = nestedRowType;
+        Types.NestedField rowFieldTemp = rowField;
+        Types.NestedField projectFieldTemp = projectField;
+        for (int i = 0; i < projectedFieldPath.length - 1; i++) {
+          LogicalType logicalType = nestedRowType.getTypeAt(projectedFieldPath[i]);
+          if (logicalType instanceof RowType) {
+            nestedRowTypeTemp = (RowType) logicalType;
+            rowFieldTemp = rowField.type().asStructType().fields().get(projectedFieldPath[i]);
+            projectFieldTemp = projectField.type().asStructType().fields().get(projectedFieldPath[i]);
+          }
+        }
+        RowType finalNestedRowTypeTemp = nestedRowTypeTemp;
+        Types.NestedField finalRowFieldTemp = rowFieldTemp;
+        Types.NestedField finalProjectFieldTemp = projectFieldTemp;
+
         return row -> {
+          int rowIndex = projectFieldsType.fields().indexOf(projectField);
           RowData nestedRow = rowIndex < 0 ? null : row.getRow(rowIndex, nestedRowType.getFieldCount());
+          int fieldIndex = 0;
+          while (fieldIndex < projectedFieldPath.length - 1 && nestedRow != null) {
+            nestedRow = nestedRow.getRow(projectedFieldPath[fieldIndex], 1);
+            fieldIndex = fieldIndex + 1;
+          }
+
+          int[][] temp = new int[][] {{projectedFieldPath[projectedFieldPath.length - 1]}};
+
           return RowDataNestProjection
-              .create(nestedRowType, rowField.type().asStructType(), projectField.type().asStructType(), temp)
+              .create(finalNestedRowTypeTemp, finalRowFieldTemp.type().asStructType(),
+                  finalProjectFieldTemp.type().asStructType(), temp, temp[0])
               .wrap(nestedRow);
         };
+
       case MAP:
-        Types.MapType projectedMap = projectField.type().asMapType();
-        Types.MapType originalMap = rowField.type().asMapType();
+        checkRowAndProjectMap(projectField, rowField);
 
-        boolean keyProjectable = !projectedMap.keyType().isNestedType() ||
-            projectedMap.keyType().equals(originalMap.keyType());
-        boolean valueProjectable = !projectedMap.valueType().isNestedType() ||
-            projectedMap.valueType().equals(originalMap.valueType());
-        Preconditions.checkArgument(keyProjectable && valueProjectable,
-            "Cannot project a partial map key or value with non-primitive type. Trying to project <%s> out of <%s>",
-            projectField, rowField);
-
-        return RowData.createFieldGetter(
-            rowType.getTypeAt(rowTypePosition),
+        return RowData.createFieldGetter(rowType.getTypeAt(rowTypePosition),
             projectFieldsType.fields().indexOf(projectField));
 
       case LIST:
-        Types.ListType projectedList = projectField.type().asListType();
-        Types.ListType originalList = rowField.type().asListType();
+        checkRowAndProjectList(projectField, rowField);
 
-        boolean elementProjectable = !projectedList.elementType().isNestedType() ||
-            projectedList.elementType().equals(originalList.elementType());
-        Preconditions.checkArgument(elementProjectable,
-            "Cannot project a partial list element with non-primitive type. Trying to project <%s> out of <%s>",
-            projectField, rowField);
-
-        return RowData.createFieldGetter(
-            rowType.getTypeAt(rowTypePosition),
+        return RowData.createFieldGetter(rowType.getTypeAt(rowTypePosition),
             projectFieldsType.fields().indexOf(projectField));
+
       default:
-        return RowData.createFieldGetter(
-            rowType.getTypeAt(rowTypePosition),
+        return RowData.createFieldGetter(rowType.getTypeAt(rowTypePosition),
             projectFieldsType.fields().indexOf(projectField));
     }
   }
 
-  public static RowDataNestProjection create(Schema schema, Schema projectedSchema, int[][] projectedFields) {
-    return RowDataNestProjection.create(FlinkSchemaUtil.convert(schema), schema.asStruct(), schema.asStruct(),
-        projectedSchema.asStruct(),
-        projectedFields);
-  }
+  private static RowData.FieldGetter createFieldGetter(RowType rowType, int position, Types.NestedField rowField,
+      Types.NestedField projectField) {
+    Preconditions.checkArgument(rowField.type().typeId() == projectField.type().typeId(),
+        "Different iceberg type between row field <%s> and project field <%s>", rowField, projectField);
 
-  public static RowDataNestProjection create(
-      RowType rowType,
-      Types.StructType schema,
-      Types.StructType rowStructType,
-      Types.StructType projectedSchema,
-      int[][] projectedFields) {
-    return new RowDataNestProjection(rowType, schema, rowStructType, projectedSchema, projectedFields);
-  }
+    switch (projectField.type().typeId()) {
+      case STRUCT:
+        RowType nestedRowType = (RowType) rowType.getTypeAt(position);
+        return row -> {
+          RowData nestedRow = row.isNullAt(position) ? null : row.getRow(position, nestedRowType.getFieldCount());
+          return RowDataNestProjection
+              .create(nestedRowType, rowField.type().asStructType(), projectField.type().asStructType())
+              .wrap(nestedRow);
+        };
 
-  public static RowDataNestProjection create(
-      RowType rowType, Types.StructType schema, Types.StructType projectedSchema,
-      int[][] projectedFields) {
-    return new RowDataNestProjection(rowType, schema, projectedSchema, projectedFields);
+      case MAP:
+        checkRowAndProjectMap(projectField, rowField);
+
+        return RowData.createFieldGetter(rowType.getTypeAt(position), position);
+
+      case LIST:
+        checkRowAndProjectList(projectField, rowField);
+
+        return RowData.createFieldGetter(rowType.getTypeAt(position), position);
+
+      default:
+        return RowData.createFieldGetter(rowType.getTypeAt(position), position);
+    }
   }
 
   public RowData wrap(RowData row) {
     this.rowData = row;
+    this.valueCache.clear();
     return this;
   }
 
   private Object getValue(int pos) {
-    Object fieldValue = getters[pos].getFieldOrNull(rowData);
-    while (fieldValue != null && fieldValue.getClass().equals(RowDataNestProjection.class)) {
-      RowDataNestProjection rowDataNest = (RowDataNestProjection) fieldValue;
-      fieldValue = rowDataNest.getters[rowDataNest.projectedFields[0][0]].getFieldOrNull(rowDataNest);
-    }
-    return fieldValue;
+    return valueCache.computeIfAbsent(pos, key -> {
+      Object fieldValue = getters[key].getFieldOrNull(rowData);
+      while (fieldValue != null && projectedFields != null &&
+          fieldValue.getClass().equals(RowDataNestProjection.class)) {
+        if (((RowDataNestProjection) fieldValue).rowData == null) {
+          return null;
+        }
+        RowDataNestProjection rowDataNest = (RowDataNestProjection) fieldValue;
+        fieldValue = rowDataNest.getters[rowDataNest.projectedFields[0][0]].getFieldOrNull(rowDataNest);
+      }
+      return fieldValue;
+    });
   }
 
   @Override
@@ -279,5 +376,29 @@ public class RowDataNestProjection implements RowData {
   @Override
   public RowData getRow(int pos, int numFields) {
     return (RowData) getValue(pos);
+  }
+
+  private static void checkRowAndProjectList(Types.NestedField projectField, Types.NestedField rowField) {
+    Types.ListType projectedList = projectField.type().asListType();
+    Types.ListType originalList = rowField.type().asListType();
+
+    boolean elementProjectable = !projectedList.elementType().isNestedType() ||
+        projectedList.elementType().equals(originalList.elementType());
+    Preconditions.checkArgument(elementProjectable,
+        "Cannot project a partial list element with non-primitive type. Trying to project <%s> out of <%s>",
+        projectField, rowField);
+  }
+
+  private static void checkRowAndProjectMap(Types.NestedField projectField, Types.NestedField rowField) {
+    Types.MapType projectedMap = projectField.type().asMapType();
+    Types.MapType originalMap = rowField.type().asMapType();
+
+    boolean keyProjectable = !projectedMap.keyType().isNestedType() ||
+        projectedMap.keyType().equals(originalMap.keyType());
+    boolean valueProjectable = !projectedMap.valueType().isNestedType() ||
+        projectedMap.valueType().equals(originalMap.valueType());
+    Preconditions.checkArgument(keyProjectable && valueProjectable,
+        "Cannot project a partial map key or value with non-primitive type. Trying to project <%s> out of <%s>",
+        projectField, rowField);
   }
 }

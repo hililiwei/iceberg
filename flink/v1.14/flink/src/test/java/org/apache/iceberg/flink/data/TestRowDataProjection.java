@@ -311,7 +311,7 @@ public class TestRowDataProjection {
     Iterable<RowData> rowDataList = RandomRowData.generate(schema, numRecords, 102L);
 
     StructProjection structProjection = StructProjection.create(schema, projectSchema);
-    RowDataProjection rowDataProjection = RowDataProjection.create(schema, projectSchema);
+    RowDataNestProjection rowDataProjection = RowDataNestProjection.create(schema, projectSchema);
 
     Iterator<Record> recordIter = recordList.iterator();
     Iterator<RowData> rowDataIter = rowDataList.iterator();

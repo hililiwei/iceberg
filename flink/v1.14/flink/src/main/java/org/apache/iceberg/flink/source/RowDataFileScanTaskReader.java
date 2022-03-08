@@ -35,7 +35,6 @@ import org.apache.iceberg.flink.RowDataWrapper;
 import org.apache.iceberg.flink.data.FlinkAvroReader;
 import org.apache.iceberg.flink.data.FlinkOrcReader;
 import org.apache.iceberg.flink.data.FlinkParquetReaders;
-import org.apache.iceberg.flink.data.RowDataNestProjection;
 import org.apache.iceberg.flink.data.RowDataProjection;
 import org.apache.iceberg.flink.data.RowDataUtil;
 import org.apache.iceberg.io.CloseableIterable;
@@ -45,6 +44,7 @@ import org.apache.iceberg.mapping.NameMappingParser;
 import org.apache.iceberg.orc.ORC;
 import org.apache.iceberg.parquet.Parquet;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableMap;
+import org.apache.iceberg.relocated.com.google.common.collect.Maps;
 import org.apache.iceberg.relocated.com.google.common.collect.Sets;
 import org.apache.iceberg.types.TypeUtil;
 import org.apache.iceberg.util.PartitionUtil;
@@ -56,15 +56,11 @@ public class RowDataFileScanTaskReader implements FileScanTaskReader<RowData> {
   private final Schema projectedSchema;
   private final String nameMapping;
   private final boolean caseSensitive;
-  private final int[][] projectedFields;
+  private int[][] projectedFields;
 
   public RowDataFileScanTaskReader(Schema tableSchema, Schema projectedSchema,
                                    String nameMapping, boolean caseSensitive) {
-    this.tableSchema = tableSchema;
-    this.projectedSchema = projectedSchema;
-    this.projectedFields = null;
-    this.nameMapping = nameMapping;
-    this.caseSensitive = caseSensitive;
+    this(tableSchema, projectedSchema, null, nameMapping, caseSensitive);
   }
 
   public RowDataFileScanTaskReader(Schema tableSchema, Schema projectedSchema, int[][] projectedFields,
@@ -89,14 +85,21 @@ public class RowDataFileScanTaskReader implements FileScanTaskReader<RowData> {
     );
 
     // Project the RowData to remove the extra meta columns.
-    if (!projectedSchema.sameSchema(deletes.requiredSchema())) {
-      RowDataProjection rowDataProjection = RowDataProjection.create(
-          deletes.requiredRowType(), deletes.requiredSchema().asStruct(), projectedSchema.asStruct());
-      iterable = CloseableIterable.transform(iterable, rowDataProjection::wrap);
+    if (!projectedSchema.sameSchema(deletes.requiredSchema()) && projectedFields == null) {
+      Map<Integer, Integer> fieldIdToPosition = Maps.newHashMap();
+      for (int i = 0; i < tableSchema.asStruct().fields().size(); i++) {
+        fieldIdToPosition.put(tableSchema.asStruct().fields().get(i).fieldId(), i);
+      }
+
+      projectedFields =
+          projectedSchema.columns()
+              .stream()
+              .map(field -> new int[] {fieldIdToPosition.get(field.fieldId())})
+              .toArray(int[][]::new);
     }
 
     if (projectedFields != null) {
-      RowDataNestProjection rowDataProjection = RowDataNestProjection.create(tableSchema, projectedSchema,
+      RowDataProjection rowDataProjection = RowDataProjection.create(tableSchema, projectedSchema,
           projectedFields);
       iterable = CloseableIterable.transform(iterable, rowDataProjection::wrap);
     }

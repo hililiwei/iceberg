@@ -469,7 +469,7 @@ public class FlinkCatalog extends AbstractCatalog {
     Preconditions.checkArgument(table instanceof CatalogTable, "The Table should be a CatalogTable.");
 
     TableSchema schema = table.getSchema();
-    if (!FlinkCompatibilityUtil.containsPhysicalColumnsOnly(schema)) {
+    if (!FlinkCompatibilityUtil.allPhysicalColumns(schema)) {
       throw new UnsupportedOperationException("Creating table with computed columns is not supported yet.");
     }
 

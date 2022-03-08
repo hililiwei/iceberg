@@ -112,7 +112,7 @@ public class TestFlinkInputFormat extends TestFlinkSource {
     new GenericAppenderHelper(table, fileFormat, TEMPORARY_FOLDER).appendToTable(writeRecords);
 
     TableSchema projectedSchema = TableSchema.builder()
-        .field("id", DataTypes.BIGINT())
+        .field("id", DataTypes.BIGINT().notNull())
         .field("data", DataTypes.STRING())
         .build();
     List<Row> result = runFormat(FlinkSource.forRowData()

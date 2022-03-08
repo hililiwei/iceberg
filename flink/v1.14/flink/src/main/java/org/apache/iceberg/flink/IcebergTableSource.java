@@ -175,7 +175,7 @@ public class IcebergTableSource
 
   private static TableSchema projectSchema(TableSchema tableSchema, int[] projectedFields) {
     Preconditions.checkArgument(
-        FlinkCompatibilityUtil.containsPhysicalColumnsOnly(tableSchema),
+        FlinkCompatibilityUtil.allPhysicalColumns(tableSchema),
         "Projection is only supported for physical columns.");
     TableSchema.Builder builder = TableSchema.builder();
 

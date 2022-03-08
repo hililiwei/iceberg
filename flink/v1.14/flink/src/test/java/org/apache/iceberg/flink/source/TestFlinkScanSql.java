@@ -143,15 +143,16 @@ public class TestFlinkScanSql extends TestFlinkSource {
     );
 
     Types.StructType struct2 = Types.StructType.of(
-        Types.NestedField.optional(31, "a", Types.StringType.get())
+        Types.NestedField.optional(31, "a", Types.StringType.get()),
+        Types.NestedField.optional(32, "b", Types.StringType.get())
     );
 
     Schema schema = new Schema(
         Types.NestedField.required(1, "data", Types.StringType.get()),
-        Types.NestedField.required(2, "id", Types.LongType.get()),
-        Types.NestedField.required(3, "mp", map),
-        Types.NestedField.required(4, "st", struct),
-        Types.NestedField.required(5, "dt", Types.StringType.get()),
+        Types.NestedField.required(3, "id", Types.LongType.get()),
+        Types.NestedField.required(2, "mp", map),
+        Types.NestedField.required(5, "st", struct),
+        Types.NestedField.required(4, "dt", Types.StringType.get()),
         Types.NestedField.required(6, "st2", struct2)
     );
 
@@ -177,7 +178,7 @@ public class TestFlinkScanSql extends TestFlinkSource {
     DataFile dataFile = helper.writeFile(TestHelpers.Row.of("2020-03-20", 0), writeRecords);
     helper.appendToTable(dataFile);
 
-    List<Row> result = sql("SELECT id, st.a, st.b, st2.a, mp FROM t");
+    List<Row> result = sql("SELECT id, st.a, st.b, st2.b, mp FROM t");
 
     for (int i = 0; i < result.size(); i++) {
       Row actorResult = result.get(i);
@@ -185,7 +186,7 @@ public class TestFlinkScanSql extends TestFlinkSource {
       Assert.assertEquals("id must be equal!", expectedResult.get(1), actorResult.getField(0));
       Assert.assertEquals("st.a must be equal!", ((Record) expectedResult.get(3)).get(0), actorResult.getField(1));
       Assert.assertEquals("st.b must be equal!", ((Record) expectedResult.get(3)).get(1), actorResult.getField(2));
-      Assert.assertEquals("st2.a must be equal!", ((Record) expectedResult.get(5)).get(0), actorResult.getField(3));
+      Assert.assertEquals("st2.b must be equal!", ((Record) expectedResult.get(5)).get(1), actorResult.getField(3));
       Assert.assertEquals("mp must be equal!", expectedResult.get(2), actorResult.getField(4));
     }
   }

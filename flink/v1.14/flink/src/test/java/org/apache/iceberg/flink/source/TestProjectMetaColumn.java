@@ -33,7 +33,7 @@ import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.flink.SimpleDataUtil;
 import org.apache.iceberg.flink.TableLoader;
 import org.apache.iceberg.flink.TestHelpers;
-import org.apache.iceberg.flink.data.RowDataProjection;
+import org.apache.iceberg.flink.data.RowDataNestProjection;
 import org.apache.iceberg.flink.sink.RowDataTaskWriterFactory;
 import org.apache.iceberg.flink.sink.TaskWriterFactory;
 import org.apache.iceberg.io.TaskWriter;
@@ -89,7 +89,7 @@ public class TestProjectMetaColumn {
 
     List<RowData> results = Lists.newArrayList();
     TestHelpers.readRowData(input, rowData -> {
-      // If project to remove the meta columns, it will get a RowDataProjection.
+      // If project to remove the meta columns, it will get a RowDataNestProjection.
       Assert.assertTrue(rowData instanceof GenericRowData);
       results.add(TestHelpers.copyRowData(rowData, SimpleDataUtil.ROW_TYPE));
     });
@@ -130,8 +130,8 @@ public class TestProjectMetaColumn {
 
     List<RowData> results = Lists.newArrayList();
     TestHelpers.readRowData(input, rowData -> {
-      // If project to remove the meta columns, it will get a RowDataProjection.
-      Assert.assertTrue(rowData instanceof RowDataProjection);
+      // If project to remove the meta columns, it will get a RowDataNestProjection.
+      Assert.assertTrue(rowData instanceof RowDataNestProjection);
       results.add(TestHelpers.copyRowData(rowData, SimpleDataUtil.ROW_TYPE));
     });
 

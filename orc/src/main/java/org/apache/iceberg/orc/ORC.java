@@ -67,6 +67,13 @@ import org.apache.orc.storage.ql.exec.vector.VectorizedRowBatch;
 
 @SuppressWarnings("checkstyle:AbbreviationAsWordInName")
 public class ORC {
+
+  /**
+   * @deprecated use {@link org.apache.iceberg.TableProperties#ORC_VECTOR_ROW_BATCH_SIZE} instead
+   */
+  @Deprecated
+  private static final String VECTOR_ROW_BATCH_SIZE = "iceberg.orc.vectorbatch.size";
+
   private ORC() {
   }
 
@@ -212,6 +219,8 @@ public class ORC {
 
         int vectorizedRowBatchSize = PropertyUtil.propertyAsInt(config,
             TableProperties.ORC_VECTOR_ROW_BATCH_SIZE, TableProperties.ORC_VECTOR_ROW_BATCH_SIZE_DEFAULT);
+        vectorizedRowBatchSize = PropertyUtil.propertyAsInt(config,
+            VECTOR_ROW_BATCH_SIZE, vectorizedRowBatchSize);
         Preconditions.checkArgument(vectorizedRowBatchSize > 0, "VectorizedRow batch size must be > 0");
 
         return new Context(stripeSize, blockSize, vectorizedRowBatchSize);

@@ -32,6 +32,7 @@ import org.apache.iceberg.relocated.com.google.common.collect.Maps;
 import org.apache.iceberg.types.Type;
 import org.apache.iceberg.types.TypeUtil;
 import org.apache.iceberg.types.Types;
+import org.apache.iceberg.util.Pair;
 import org.apache.orc.TypeDescription;
 
 /**
@@ -107,38 +108,59 @@ public final class ORCSchemaUtil {
     final TypeDescription root = TypeDescription.createStruct();
     final Types.StructType schemaRoot = schema.asStruct();
     for (Types.NestedField field : schemaRoot.asStructType().fields()) {
-      TypeDescription orcColumType = convert(field.fieldId(), field.type(), field.isRequired());
-      root.addField(field.name(), orcColumType);
+      Pair<TypeDescription, Integer> orcColumType = convert(field.fieldId(), field.type(), field.isRequired());
+      root.addField(field.name(), orcColumType.first());
     }
     return root;
   }
 
-  private static TypeDescription convert(Integer fieldId, Type type, boolean isRequired) {
+  public static Pair<TypeDescription, Integer> convertWithLength(Schema schema) {
+    final TypeDescription root = TypeDescription.createStruct();
+    Integer estimateLength = 0;
+
+    final Types.StructType schemaRoot = schema.asStruct();
+    for (Types.NestedField field : schemaRoot.asStructType().fields()) {
+      Pair<TypeDescription, Integer> orcColumType = convert(field.fieldId(), field.type(), field.isRequired());
+      root.addField(field.name(), orcColumType.first());
+      estimateLength = orcColumType.second();
+    }
+    return Pair.of(root, estimateLength);
+  }
+
+  private static Pair<TypeDescription, Integer> convert(Integer fieldId, Type type, boolean isRequired) {
     final TypeDescription orcType;
+    Integer estimateLength = 0;
 
     switch (type.typeId()) {
       case BOOLEAN:
         orcType = TypeDescription.createBoolean();
+        estimateLength = 1;
         break;
       case INTEGER:
         orcType = TypeDescription.createInt();
+        estimateLength = 4;
         break;
       case TIME:
         orcType = TypeDescription.createLong();
         orcType.setAttribute(ICEBERG_LONG_TYPE_ATTRIBUTE, LongType.TIME.toString());
+        estimateLength = 8;
         break;
       case LONG:
         orcType = TypeDescription.createLong();
         orcType.setAttribute(ICEBERG_LONG_TYPE_ATTRIBUTE, LongType.LONG.toString());
+        estimateLength = 8;
         break;
       case FLOAT:
         orcType = TypeDescription.createFloat();
+        estimateLength = 4;
         break;
       case DOUBLE:
         orcType = TypeDescription.createDouble();
+        estimateLength = 8;
         break;
       case DATE:
         orcType = TypeDescription.createDate();
+        estimateLength = 12;
         break;
       case TIMESTAMP:
         Types.TimestampType tsType = (Types.TimestampType) type;
@@ -147,50 +169,59 @@ public final class ORCSchemaUtil {
         } else {
           orcType = TypeDescription.createTimestamp();
         }
+        estimateLength = 12;
         break;
       case STRING:
         orcType = TypeDescription.createString();
+        estimateLength = 128;
         break;
       case UUID:
         orcType = TypeDescription.createBinary();
         orcType.setAttribute(ICEBERG_BINARY_TYPE_ATTRIBUTE, BinaryType.UUID.toString());
+        estimateLength = 16;
         break;
       case FIXED:
         orcType = TypeDescription.createBinary();
         orcType.setAttribute(ICEBERG_BINARY_TYPE_ATTRIBUTE, BinaryType.FIXED.toString());
-        orcType.setAttribute(ICEBERG_FIELD_LENGTH, Integer.toString(((Types.FixedType) type).length()));
+        estimateLength = ((Types.FixedType) type).length();
+        orcType.setAttribute(ICEBERG_FIELD_LENGTH, Integer.toString(estimateLength));
         break;
       case BINARY:
         orcType = TypeDescription.createBinary();
         orcType.setAttribute(ICEBERG_BINARY_TYPE_ATTRIBUTE, BinaryType.BINARY.toString());
+        estimateLength = 128;
         break;
       case DECIMAL: {
         Types.DecimalType decimal = (Types.DecimalType) type;
         orcType = TypeDescription.createDecimal()
             .withScale(decimal.scale())
             .withPrecision(decimal.precision());
+        estimateLength = decimal.precision() * 4 + 1;
         break;
       }
       case STRUCT: {
         orcType = TypeDescription.createStruct();
         for (Types.NestedField field : type.asStructType().fields()) {
-          TypeDescription childType = convert(field.fieldId(), field.type(), field.isRequired());
-          orcType.addField(field.name(), childType);
+          Pair<TypeDescription, Integer> childType = convert(field.fieldId(), field.type(), field.isRequired());
+          orcType.addField(field.name(), childType.first());
+          estimateLength = estimateLength + childType.second();
         }
         break;
       }
       case LIST: {
         Types.ListType list = (Types.ListType) type;
-        TypeDescription elementType = convert(list.elementId(), list.elementType(),
+        Pair<TypeDescription, Integer> elementType = convert(list.elementId(), list.elementType(),
             list.isElementRequired());
-        orcType = TypeDescription.createList(elementType);
+        orcType = TypeDescription.createList(elementType.first());
+        estimateLength = elementType.second();
         break;
       }
       case MAP: {
         Types.MapType map = (Types.MapType) type;
-        TypeDescription keyType = convert(map.keyId(), map.keyType(), true);
-        TypeDescription valueType = convert(map.valueId(), map.valueType(), map.isValueRequired());
-        orcType = TypeDescription.createMap(keyType, valueType);
+        Pair<TypeDescription, Integer> keyType = convert(map.keyId(), map.keyType(), true);
+        Pair<TypeDescription, Integer> valueType = convert(map.valueId(), map.valueType(), map.isValueRequired());
+        orcType = TypeDescription.createMap(keyType.first(), valueType.first());
+        estimateLength = keyType.second() + valueType.second();
         break;
       }
       default:
@@ -200,7 +231,7 @@ public final class ORCSchemaUtil {
     // Set Iceberg column attributes for mapping
     orcType.setAttribute(ICEBERG_ID_ATTRIBUTE, String.valueOf(fieldId));
     orcType.setAttribute(ICEBERG_REQUIRED_ATTRIBUTE, String.valueOf(isRequired));
-    return orcType;
+    return Pair.of(orcType, estimateLength);
   }
 
   /**
@@ -310,7 +341,7 @@ public final class ORCSchemaUtil {
                 String.format("Field %d of type %s is required and was not found.", fieldId, type.toString()));
           }
 
-          orcType = convert(fieldId, type, false);
+          orcType = convert(fieldId, type, false).first();
         }
     }
     orcType.setAttribute(ICEBERG_ID_ATTRIBUTE, fieldId.toString());

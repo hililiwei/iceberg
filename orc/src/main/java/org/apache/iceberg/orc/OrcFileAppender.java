@@ -20,6 +20,7 @@
 package org.apache.iceberg.orc;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.List;
@@ -30,17 +31,20 @@ import org.apache.hadoop.fs.Path;
 import org.apache.iceberg.Metrics;
 import org.apache.iceberg.MetricsConfig;
 import org.apache.iceberg.Schema;
+import org.apache.iceberg.common.DynFields;
 import org.apache.iceberg.exceptions.RuntimeIOException;
 import org.apache.iceberg.hadoop.HadoopOutputFile;
 import org.apache.iceberg.io.FileAppender;
 import org.apache.iceberg.io.OutputFile;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
+import org.apache.iceberg.util.Pair;
 import org.apache.orc.OrcFile;
 import org.apache.orc.Reader;
 import org.apache.orc.StripeInformation;
 import org.apache.orc.TypeDescription;
 import org.apache.orc.Writer;
+import org.apache.orc.impl.writer.TreeWriter;
 import org.apache.orc.storage.ql.exec.vector.VectorizedRowBatch;
 
 /**
@@ -50,7 +54,9 @@ class OrcFileAppender<D> implements FileAppender<D> {
   private final int batchSize;
   private final OutputFile file;
   private final Writer writer;
+  private final TreeWriter treeWriter;
   private final VectorizedRowBatch batch;
+  private final int estimateLength;
   private final OrcRowWriter<D> valueWriter;
   private boolean isClosed = false;
   private final Configuration conf;
@@ -65,7 +71,11 @@ class OrcFileAppender<D> implements FileAppender<D> {
     this.batchSize = batchSize;
     this.metricsConfig = metricsConfig;
 
-    TypeDescription orcSchema = ORCSchemaUtil.convert(schema);
+    Pair<TypeDescription, Integer> typeDescriptionIntegerPair = ORCSchemaUtil.convertWithLength(schema);
+
+    TypeDescription orcSchema = typeDescriptionIntegerPair.first();
+    estimateLength = typeDescriptionIntegerPair.second();
+
     this.batch = orcSchema.createRowBatch(this.batchSize);
 
     OrcFile.WriterOptions options = OrcFile.writerOptions(conf).useUTCTimestamp(true);
@@ -74,6 +84,7 @@ class OrcFileAppender<D> implements FileAppender<D> {
     }
     options.setSchema(orcSchema);
     this.writer = newOrcWriter(file, options, metadata);
+    this.treeWriter =  treeWriterHiddenInORC();
     this.valueWriter = newOrcRowWriter(schema, orcSchema, createWriterFunc);
   }
 
@@ -86,7 +97,7 @@ class OrcFileAppender<D> implements FileAppender<D> {
         batch.reset();
       }
     } catch (IOException ioe) {
-      throw new RuntimeIOException(ioe, "Problem writing to ORC file %s", file.location());
+      throw new UncheckedIOException(String.format("Problem writing to ORC file %s", file.location()), ioe);
     }
   }
 
@@ -99,9 +110,27 @@ class OrcFileAppender<D> implements FileAppender<D> {
 
   @Override
   public long length() {
-    Preconditions.checkState(isClosed,
-        "Cannot return length while appending to an open file.");
-    return file.toInputFile().getLength();
+    if (isClosed) {
+      return file.toInputFile().getLength();
+    }
+    if (this.treeWriter == null) {
+      throw new RuntimeException("Can't get the length!");
+    }
+    long estimateMemory = this.treeWriter.estimateMemory();
+
+    long dataLength = 0;
+    try {
+      List<StripeInformation> stripes = writer.getStripes();
+      if (!stripes.isEmpty()) {
+        StripeInformation stripeInformation = stripes.get(stripes.size() - 1);
+        dataLength = stripeInformation != null ? stripeInformation.getOffset() + stripeInformation.getLength() : 0;
+      }
+    } catch (IOException e) {
+      throw new UncheckedIOException(String.format("Can't get stripes from file %s", file.location()), e);
+    }
+
+    // This value is estimated, not actual.
+    return dataLength + estimateMemory + (long) batch.size * estimateLength ;
   }
 
   @Override
@@ -152,5 +181,11 @@ class OrcFileAppender<D> implements FileAppender<D> {
                                                      BiFunction<Schema, TypeDescription, OrcRowWriter<?>>
                                                          createWriterFunc) {
     return (OrcRowWriter<D>) createWriterFunc.apply(schema, orcSchema);
+  }
+
+  private TreeWriter treeWriterHiddenInORC() {
+    DynFields.BoundField<TreeWriter> treeWriterFiled =
+        DynFields.builder().hiddenImpl(writer.getClass(), "treeWriter").build(writer);
+    return treeWriterFiled.get();
   }
 }

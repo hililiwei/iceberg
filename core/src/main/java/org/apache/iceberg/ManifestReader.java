@@ -29,6 +29,7 @@ import org.apache.iceberg.avro.AvroIterable;
 import org.apache.iceberg.exceptions.RuntimeIOException;
 import org.apache.iceberg.expressions.Evaluator;
 import org.apache.iceberg.expressions.Expression;
+import org.apache.iceberg.expressions.ExpressionRemove;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.expressions.InclusiveMetricsEvaluator;
 import org.apache.iceberg.expressions.Projections;
@@ -84,9 +85,11 @@ public class ManifestReader<F extends ContentFile<F>>
   private PartitionSet partitionSet = null;
   private Expression partFilter = alwaysTrue();
   private Expression rowFilter = alwaysTrue();
+  private Expression rowDeleteFilter;
   private Schema fileProjection = null;
   private Collection<String> columns = null;
   private boolean caseSensitive = true;
+  private Schema metadataSchema;
 
   // lazily initialized
   private Evaluator lazyEvaluator = null;
@@ -115,11 +118,12 @@ public class ManifestReader<F extends ContentFile<F>>
       specId = Integer.parseInt(specProperty);
     }
 
+    this.metadataSchema = SchemaParser.fromJson(metadata.get("schema"));
+
     if (specsById != null) {
       this.spec = specsById.get(specId);
     } else {
-      Schema schema = SchemaParser.fromJson(metadata.get("schema"));
-      this.spec = PartitionSpecParser.fromJsonFields(schema, specId, metadata.get("partition-spec"));
+      this.spec = PartitionSpecParser.fromJsonFields(metadataSchema, specId, metadata.get("partition-spec"));
     }
 
     this.fileSchema = new Schema(DataFile.getType(spec.partitionType()).fields());
@@ -166,6 +170,15 @@ public class ManifestReader<F extends ContentFile<F>>
   }
 
   public ManifestReader<F> filterRows(Expression expr) {
+    if (this.content.equals(FileType.DELETE_FILES) && this.metadataSchema.identifierFieldIds() != null &&
+        !this.metadataSchema.identifierFieldIds().isEmpty()) {
+      Expression expression = new ExpressionRemove(this.metadataSchema)
+          .visitEvaluator(expr, caseSensitive);
+      if (rowDeleteFilter == null) {
+        rowDeleteFilter = alwaysTrue();
+      }
+      this.rowDeleteFilter = Expressions.and(rowDeleteFilter, expression);
+    }
     this.rowFilter = Expressions.and(rowFilter, expr);
     return this;
   }
@@ -277,7 +290,10 @@ public class ManifestReader<F extends ContentFile<F>>
 
   private InclusiveMetricsEvaluator metricsEvaluator() {
     if (lazyMetricsEvaluator == null) {
-      if (rowFilter != null) {
+      if (rowDeleteFilter != null) {
+        this.lazyMetricsEvaluator = new InclusiveMetricsEvaluator(
+            spec.schema(), rowDeleteFilter, caseSensitive);
+      } else if (rowFilter != null) {
         this.lazyMetricsEvaluator = new InclusiveMetricsEvaluator(
             spec.schema(), rowFilter, caseSensitive);
       } else {

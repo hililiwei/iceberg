@@ -19,6 +19,7 @@
 
 package org.apache.iceberg.spark.extensions;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.Map;
 import org.apache.iceberg.AssertHelpers;
@@ -147,5 +148,38 @@ public class TestMigrateTableProcedure extends SparkExtensionsTestBase {
     AssertHelpers.assertThrows("Should reject calls with empty table identifier",
         IllegalArgumentException.class, "Cannot handle an empty identifier",
         () -> sql("CALL %s.system.migrate('')", catalogName));
+  }
+
+  @Test
+  public void testMigrateSkipCouuptFiles() throws IOException {
+    Assume.assumeTrue(catalogName.equals("spark_catalog"));
+
+    String location = temp.newFolder().toString();
+    sql("CREATE TABLE %s (id bigint NOT NULL, data string) USING parquet LOCATION '%s'", tableName, location);
+
+    sql("INSERT INTO TABLE %s VALUES (1, 'a')", tableName);
+    sql("INSERT INTO TABLE %s VALUES (1, 'a')", tableName);
+
+    File[] expectedFiles =
+        new File(location).listFiles((dir, name) -> !name.endsWith("crc") && !name.contains("_SUCCESS"));
+
+    Assert.assertEquals("Expected number of source files", 2, expectedFiles.length);
+
+    // Corrupt the second file
+    Assume.assumeTrue("Delete source file!", expectedFiles[1].delete());
+    Assume.assumeTrue("Create a empty source file!", expectedFiles[1].createNewFile());
+
+    AssertHelpers.assertThrows(
+        "Expected an exception",
+        RuntimeException.class,
+        "not a Parquet file (length is too low: 0)",
+        () -> scalarSql("CALL %s.system.migrate(table => '%s')", catalogName, tableName));
+
+    Object result = scalarSql("CALL %s.system.migrate(" +
+            "table => '%s', " +
+            "skip_corrupt_files => true)",
+        catalogName, tableName);
+
+    Assert.assertEquals(1L, result);
   }
 }

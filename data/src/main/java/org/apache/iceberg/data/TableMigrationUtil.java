@@ -24,6 +24,7 @@ import java.io.UncheckedIOException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -48,12 +49,41 @@ import org.apache.iceberg.parquet.ParquetUtil;
 import org.apache.iceberg.relocated.com.google.common.util.concurrent.MoreExecutors;
 import org.apache.iceberg.relocated.com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.apache.iceberg.util.Tasks;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class TableMigrationUtil {
+  private static final Logger LOG = LoggerFactory.getLogger(TableMigrationUtil.class);
+
   private static final PathFilter HIDDEN_PATH_FILTER =
       p -> !p.getName().startsWith("_") && !p.getName().startsWith(".");
 
   private TableMigrationUtil() {
+  }
+
+  /**
+   * Returns the data files in a partition by listing the partition location.
+   * <p>
+   * For Parquet and ORC partitions, this will read metrics from the file footer. For Avro partitions,
+   * metrics are set to null.
+   * <p>
+   * Note: certain metrics, like NaN counts, that are only supported by iceberg file writers but not file footers,
+   * will not be populated.
+   *
+   * @param partition partition key, e.g., "a=1/b=2"
+   * @param uri           partition location URI
+   * @param format        partition format, avro, parquet or orc
+   * @param spec          a partition spec
+   * @param conf          a Hadoop conf
+   * @param metricsConfig a metrics conf
+   * @param mapping       a name mapping
+   * @param skipCorruptFiles if true, skip corrupt files
+   * @return a List of DataFile
+   */
+  public static List<DataFile> listPartition(Map<String, String> partition, String uri, String format,
+                                             PartitionSpec spec, Configuration conf, MetricsConfig metricsConfig,
+                                             NameMapping mapping, boolean skipCorruptFiles) {
+    return listPartition(partition, uri, format, spec, conf, metricsConfig, mapping, 1, skipCorruptFiles);
   }
 
   /**
@@ -77,12 +107,12 @@ public class TableMigrationUtil {
   public static List<DataFile> listPartition(Map<String, String> partition, String uri, String format,
                                              PartitionSpec spec, Configuration conf, MetricsConfig metricsConfig,
                                              NameMapping mapping) {
-    return listPartition(partition, uri, format, spec, conf, metricsConfig, mapping, 1);
+    return listPartition(partition, uri, format, spec, conf, metricsConfig, mapping, 1, false);
   }
 
   public static List<DataFile> listPartition(Map<String, String> partitionPath, String partitionUri, String format,
                                              PartitionSpec spec, Configuration conf, MetricsConfig metricsSpec,
-                                             NameMapping mapping, int parallelism) {
+                                             NameMapping mapping, int parallelism, boolean skipCorruptFiles) {
     ExecutorService service = null;
     try {
       String partitionKey = spec.fields().stream()
@@ -96,9 +126,14 @@ public class TableMigrationUtil {
               .filter(FileStatus::isFile)
               .collect(Collectors.toList());
       DataFile[] datafiles = new DataFile[fileStatus.size()];
-      Tasks.Builder<Integer> task = Tasks.range(fileStatus.size())
-              .stopOnFailure()
-              .throwFailureWhenFinished();
+      Tasks.Builder<Integer> task = Tasks.range(fileStatus.size());
+
+      if (skipCorruptFiles) {
+        task.suppressFailureWhenFinished();
+      } else {
+        task.stopOnFailure()
+            .throwFailureWhenFinished();
+      }
 
       if (parallelism > 1) {
         service = migrationService(parallelism);
@@ -121,9 +156,13 @@ public class TableMigrationUtil {
           datafiles[index] = buildDataFile(fileStatus.get(index), partitionKey, spec, metrics, "orc");
         });
       } else {
-        throw new UnsupportedOperationException("Unknown partition format: " + format);
+        if (skipCorruptFiles) {
+          LOG.warn("Unknown partition format: {}", format);
+        } else {
+          throw new UnsupportedOperationException("Unknown partition format: " + format);
+        }
       }
-      return Arrays.asList(datafiles);
+      return Arrays.stream(datafiles).filter(Objects::nonNull).collect(Collectors.toList());
     } catch (IOException e) {
       throw new RuntimeException("Unable to list files in partition: " + partitionUri, e);
     } finally {
@@ -140,7 +179,7 @@ public class TableMigrationUtil {
       return new Metrics(rowCount, null, null, null, null);
     } catch (UncheckedIOException e) {
       throw new RuntimeException("Unable to read Avro file: " +
-              path, e);
+          path, e);
     }
   }
 
@@ -151,7 +190,7 @@ public class TableMigrationUtil {
       return ParquetUtil.fileMetrics(file, metricsSpec, mapping);
     } catch (UncheckedIOException e) {
       throw new RuntimeException("Unable to read the metrics of the Parquet file: " +
-              path, e);
+          path, e);
     }
   }
 
@@ -162,7 +201,7 @@ public class TableMigrationUtil {
               metricsSpec, mapping);
     } catch (UncheckedIOException e) {
       throw new RuntimeException("Unable to read the metrics of the Orc file: " +
-              path, e);
+          path, e);
     }
   }
 

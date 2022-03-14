@@ -33,6 +33,7 @@ import org.apache.iceberg.spark.Spark3Util;
 import org.apache.iceberg.spark.Spark3Util.CatalogAndIdentifier;
 import org.apache.iceberg.spark.SparkTableUtil;
 import org.apache.iceberg.spark.source.StagedSparkTable;
+import org.apache.iceberg.util.PropertyUtil;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.catalyst.TableIdentifier;
 import org.apache.spark.sql.connector.catalog.CatalogPlugin;
@@ -125,6 +126,8 @@ public class BaseSnapshotTableSparkAction
 
     // TODO: Check the dest table location does not overlap with the source table location
 
+    boolean skipCorruptFiles = PropertyUtil.propertyAsBoolean(options(), SparkActionOptions.SKIP_CORRUPT_FILES,
+        SparkActionOptions.SKIP_CORRUPT_FILES_DEFAULT);
     boolean threw = true;
     try {
       LOG.info("Ensuring {} has a valid name mapping", destTableIdent());
@@ -133,7 +136,9 @@ public class BaseSnapshotTableSparkAction
       TableIdentifier v1TableIdent = v1SourceTable().identifier();
       String stagingLocation = getMetadataLocation(icebergTable);
       LOG.info("Generating Iceberg metadata for {} in {}", destTableIdent(), stagingLocation);
-      SparkTableUtil.importSparkTable(spark(), v1TableIdent, icebergTable, stagingLocation);
+      SparkTableUtil.importSparkTableBuilder(spark(), v1TableIdent, icebergTable, stagingLocation)
+          .skipCorruptFiles(skipCorruptFiles)
+          .execute();
 
       LOG.info("Committing staged changes to {}", destTableIdent());
       stagedTable.commitStagedChanges();

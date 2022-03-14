@@ -267,7 +267,7 @@ public class TestRewriteManifestsAction extends SparkTestBase {
           .saveAsTable("parquet_table");
 
       File stagingDir = temp.newFolder("staging-dir");
-      SparkTableUtil.importSparkTable(spark, new TableIdentifier("parquet_table"), table, stagingDir.toString());
+      SparkTableUtil.importSparkTable(spark, new TableIdentifier("parquet_table"), table, stagingDir.toString(), false);
 
       Snapshot snapshot = table.currentSnapshot();
 

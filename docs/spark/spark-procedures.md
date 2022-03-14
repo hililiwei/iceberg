@@ -417,10 +417,11 @@ To leave the original table intact while testing, use [`snapshot`](#snapshot) to
 
 #### Usage
 
-| Argument Name | Required? | Type | Description |
-|---------------|-----------|------|-------------|
-| `table`       | ✔️  | string | Name of the table to migrate |
-| `properties`  | ️   | map<string, string> | Properties for the new Iceberg table |
+| Argument Name        | Required? | Type                | Description                                    |
+|----------------------|-----------|---------------------|------------------------------------------------|
+| `table`              | ✔️        | string              | Name of the table to migrate                   |
+| `properties`         | ️         | map<string, string> | Properties for the new Iceberg table           |
+| `skip_corrupt_files` | ️         | boolean             | If true, skip corrupt files (false by default) |
 
 #### Output
 
@@ -453,11 +454,12 @@ will then treat these files as if they are part of the set of files  owned by Ic
 
 #### Usage
 
-| Argument Name | Required? | Type | Description |
-|---------------|-----------|------|-------------|
-| `table`       | ✔️  | string | Table which will have files added to|
-| `source_table`| ✔️  | string | Table where files should come from, paths are also possible in the form of \`file_format\`.\`path\` |
-| `partition_filter`  | ️   | map<string, string> | A map of partitions in the source table to import from |
+| Argument Name         | Required? | Type                | Description |
+|-----------------------|-----------|---------------------|-------------|
+| `table`               | ✔️        | string              | Table which will have files added to|
+| `source_table`        | ✔️        | string              | Table where files should come from, paths are also possible in the form of \`file_format\`.\`path\` |
+| `partition_filter`    | ️         | map<string, string> | A map of partitions in the source table to import from |
+| `skip_corrupt_files`  | ️         | boolean             | If true, skip corrupt files (false by default) |
 
 Warning : Schema is not validated, adding files with different schema to the Iceberg table will cause issues.
 

@@ -33,6 +33,7 @@ import org.apache.iceberg.spark.JobGroupInfo;
 import org.apache.iceberg.spark.SparkSessionCatalog;
 import org.apache.iceberg.spark.SparkTableUtil;
 import org.apache.iceberg.spark.source.StagedSparkTable;
+import org.apache.iceberg.util.PropertyUtil;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.catalyst.TableIdentifier;
 import org.apache.spark.sql.connector.catalog.CatalogPlugin;
@@ -112,6 +113,10 @@ public class BaseMigrateTableSparkAction
 
     StagedSparkTable stagedTable = null;
     Table icebergTable;
+
+    boolean skipCorruptFiles = PropertyUtil.propertyAsBoolean(options(), SparkActionOptions.SKIP_CORRUPT_FILES,
+        SparkActionOptions.SKIP_CORRUPT_FILES_DEFAULT);
+
     boolean threw = true;
     try {
       LOG.info("Staging a new Iceberg table {}", destTableIdent());
@@ -125,7 +130,9 @@ public class BaseMigrateTableSparkAction
       TableIdentifier v1BackupIdent = new TableIdentifier(backupIdent.name(), backupNamespace);
       String stagingLocation = getMetadataLocation(icebergTable);
       LOG.info("Generating Iceberg metadata for {} in {}", destTableIdent(), stagingLocation);
-      SparkTableUtil.importSparkTable(spark(), v1BackupIdent, icebergTable, stagingLocation);
+      SparkTableUtil.importSparkTableBuilder(spark(), v1BackupIdent, icebergTable, stagingLocation)
+          .skipCorruptFiles(skipCorruptFiles)
+          .execute();
 
       LOG.info("Committing staged changes to {}", destTableIdent());
       stagedTable.commitStagedChanges();

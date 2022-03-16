@@ -65,7 +65,8 @@ public class RowDataTaskWriterFactory implements TaskWriterFactory<RowData> {
   private transient OutputFileFactory outputFileFactory;
 
   // This is a good candidate to update. But I think there was a config backported to
-  // 0.14.0 that needs to be set to not materialize _only_ +I during upsert.
+  // 0.14.3 that needs to be set to not materialize _only_ +I during upsert.
+  //
   public RowDataTaskWriterFactory(Table table,
                                   RowType flinkSchema,
                                   long targetFileSizeBytes,

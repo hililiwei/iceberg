@@ -477,7 +477,7 @@ public class TestTaskEqualityDeltaWriter extends TableTestBase {
 
       @Override
       protected StructLike asStructLike(Record row) {
-        return row;  // This projection is another candiate for places to update.
+        return row;
       }
 
       @Override

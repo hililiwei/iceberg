@@ -83,8 +83,6 @@ public class TestFlinkUpsert extends FlinkCatalogTestBase {
     tableUpsertProps.put(TableProperties.FORMAT_VERSION, "2");
     tableUpsertProps.put(TableProperties.UPSERT_ENABLED, "true");
     tableUpsertProps.put(TableProperties.DEFAULT_FILE_FORMAT, format.name());
-    // Found in PR 17699 here: https://issues.apache.org/jira/browse/FLINK-20370
-    tableUpsertProps.put("changelog-mode", "I,UB,UA,D");
   }
 
   @Override

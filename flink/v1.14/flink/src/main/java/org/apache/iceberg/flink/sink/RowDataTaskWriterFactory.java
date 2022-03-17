@@ -103,7 +103,7 @@ public class RowDataTaskWriterFactory implements TaskWriterFactory<RowData> {
       Integer maxEqualityFieldId = Collections.max(equalityFieldIdsSet);
       Set<Integer> intersection = Sets.intersection(equalityFieldIdsSet, partitionFieldSourceIdsSet);
       // if (table.spec().isPartitioned() && !symmetricDifference.isEmpty()) {
-      if (table.spec().isPartitioned() && !symmetricDifference.isEmpty()) {
+      if (table.spec().isPartitioned() && !equalityFieldsMatchTablePartitionFieldSources()) {
         this.appenderFactory = new FlinkAppenderFactory(schema, flinkSchema, table.properties(), spec,
             ArrayUtil.toIntArray(equalityFieldIds), TypeUtil.select(schema, equalityFieldIdsSet), null);
       } else {

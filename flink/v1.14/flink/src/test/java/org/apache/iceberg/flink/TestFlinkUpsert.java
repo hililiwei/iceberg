@@ -162,9 +162,11 @@ public class TestFlinkUpsert extends FlinkCatalogTestBase {
 
   // This is an SQL based reproduction of TestFlinkIcebergSinkV2#testUpsertOnDataKey
   //
-  // This test case fails when making the equality delete filter as
+  // This test case fails when updating the equality delete filter in RowDataTaskWriterFactory
+  // to be TypeUtil.select(schema, Sets.newHashSet(equalityFieldIds)) - which makes the above
+  // test pass.
   @Test
-  public void testUpsertOnDataKey() {
+  public void testUpsertWhenPartitionFieldSourceIdsAreEqualToEqualityDeleteFields() {
     String tableName = "upsert_on_data_key";
     try {
       sql("CREATE TABLE %s(id INT NOT NULL, data STRING NOT NULL, PRIMARY KEY(data) NOT ENFORCED) " +
@@ -210,7 +212,7 @@ public class TestFlinkUpsert extends FlinkCatalogTestBase {
   }
 
   @Test
-  public void testUpsertOnSupsersetOfPartitions() {
+  public void testUpsertEqualityFieldsAreSuperSetOfPartitionFieldsWithPartitionFieldAtEnd() {
     String tableName = "upsert_on_subset_of_partition_ids";
     LocalDate dt = LocalDate.of(2022, 3, 1);
     try {
@@ -262,7 +264,7 @@ public class TestFlinkUpsert extends FlinkCatalogTestBase {
   //
   // Either way, the deletion manifest statistics are WRONG. =(
   @Test
-  public void testUpsertOnSuperSetOfPartitionKeysOut() {
+  public void testUpsertEqualityFieldsAreSuperSetOfPartitionFieldsWithPartitionFieldAtBeginning() {
     String tableName = "upsert_on_subset_of_partition_ids";
     LocalDate dt = LocalDate.of(2022, 3, 1);
     try {

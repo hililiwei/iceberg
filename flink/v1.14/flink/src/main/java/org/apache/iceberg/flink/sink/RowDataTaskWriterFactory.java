@@ -19,7 +19,6 @@
 
 package org.apache.iceberg.flink.sink;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -41,10 +40,11 @@ import org.apache.iceberg.io.TaskWriter;
 import org.apache.iceberg.io.UnpartitionedWriter;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.relocated.com.google.common.collect.Sets;
-import org.apache.iceberg.types.TypeUtil;
 import org.apache.iceberg.util.ArrayUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+// import org.apache.iceberg.types.TypeUtil;
 
 public class RowDataTaskWriterFactory implements TaskWriterFactory<RowData> {
 

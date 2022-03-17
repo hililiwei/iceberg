@@ -46,6 +46,7 @@ public abstract class BaseTaskWriter<T> implements TaskWriter<T> {
   private final List<DeleteFile> completedDeleteFiles = Lists.newArrayList();
   private final CharSequenceSet referencedDataFiles = CharSequenceSet.empty();
 
+  // Make visible in PR.
   private final PartitionSpec spec;
   private final FileFormat format;
   private final FileAppenderFactory<T> appenderFactory;

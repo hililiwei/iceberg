@@ -35,12 +35,8 @@ import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.OutputFileFactory;
 import org.apache.iceberg.relocated.com.google.common.collect.Sets;
 import org.apache.iceberg.types.TypeUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 abstract class BaseDeltaTaskWriter extends BaseTaskWriter<RowData> {
-
-  private static final Logger LOG = LoggerFactory.getLogger(BaseDeltaTaskWriter.class);
 
   private final Schema schema;
   private final Schema deleteSchema;
@@ -83,11 +79,11 @@ abstract class BaseDeltaTaskWriter extends BaseTaskWriter<RowData> {
         writer.write(row);
         break;
 
-      // UPDATE_BEFORE is not necessary to apply to upsert, as all rows are modeled as INSERT records during upsert.
+      // UPDATE_BEFORE is not necessary to apply in upsert mode, as all rows are modeled as INSERT
+      // records.
       // We account for deleting the previous row by emitting a deleted row using the passed in equality delete
       // file schema in the INSERT case if the writer is operating in upsert mode.
       case UPDATE_BEFORE:
-        LOG.error("-U - UPDATE_BEFORE row: {}", row);
         if (upsert) {
           break;  // UPDATE_BEFORE is not necessary for UPDATE, we do nothing to prevent delete one row twice
         }

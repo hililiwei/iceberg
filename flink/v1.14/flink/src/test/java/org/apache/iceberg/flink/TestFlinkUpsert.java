@@ -60,8 +60,7 @@ public class TestFlinkUpsert extends FlinkCatalogTestBase {
   private final boolean isStreamingJob;
   private final Map<String, String> tableUpsertProps = Maps.newHashMap();
 
-  @Parameterized.Parameters(
-      name = "catalogName={0}, baseNamespace={1}, format={2}, isStreaming={3}, WriteDistributionMode ={4}")
+  @Parameterized.Parameters(name = "catalogName={0}, baseNamespace={1}, format={2}, isStreaming={3}")
   public static Iterable<Object[]> parameters() {
     List<Object[]> parameters = Lists.newArrayList();
     for (FileFormat format : new FileFormat[] {FileFormat.PARQUET, FileFormat.AVRO, FileFormat.ORC}) {

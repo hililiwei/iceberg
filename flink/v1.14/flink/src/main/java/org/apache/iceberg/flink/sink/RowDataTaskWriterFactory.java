@@ -19,6 +19,7 @@
 
 package org.apache.iceberg.flink.sink;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -81,9 +82,30 @@ public class RowDataTaskWriterFactory implements TaskWriterFactory<RowData> {
     if (equalityFieldIds == null || equalityFieldIds.isEmpty()) {
       this.appenderFactory = new FlinkAppenderFactory(schema, flinkSchema, table.properties(), spec);
     } else {
-      if (table.spec().isPartitioned() && !equalityFieldsMatchTablePartitionFieldSources()) {
+      Set<Integer> partitionFieldSourceIdsSet =
+          spec.fields().stream().map(PartitionField::sourceId).collect(Collectors.toSet());
+      Set<Integer> equalityFieldIdsSet = Sets.newHashSet(equalityFieldIds);
+      LOG.error("partitionFieldSourceIdsSet is {}", partitionFieldSourceIdsSet);
+      Set<Integer> partitionFieldsNotUsedInEqualityFields =
+          Sets.difference(partitionFieldSourceIdsSet, equalityFieldIdsSet);
+      LOG.error("equalityFieldSourceIdsSet is {}", equalityFieldIdsSet);
+      LOG.error("Set difference of partition field ids - equality field ids is {}",
+          partitionFieldsNotUsedInEqualityFields);
+
+      LOG.error("Set difference of equality field ids - partition field ids is {}",
+          Sets.difference(equalityFieldIdsSet, partitionFieldSourceIdsSet));
+      Set<Integer> symmetricDifference = Sets.symmetricDifference(partitionFieldSourceIdsSet, equalityFieldIdsSet);
+      LOG.error("Symmetric difference is {}", symmetricDifference);
+      LOG.error("Intersection of two sets is {}", Sets.intersection(equalityFieldIdsSet, partitionFieldSourceIdsSet));
+      final boolean b = symmetricDifference.stream().noneMatch(partitionFieldSourceIdsSet::contains);
+
+      Integer maxPartitionField = Collections.max(partitionFieldSourceIdsSet);
+      Integer maxEqualityFieldId = Collections.max(equalityFieldIdsSet);
+      Set<Integer> intersection = Sets.intersection(equalityFieldIdsSet, partitionFieldSourceIdsSet);
+      // if (table.spec().isPartitioned() && !symmetricDifference.isEmpty()) {
+      if (table.spec().isPartitioned() && !symmetricDifference.isEmpty()) {
         this.appenderFactory = new FlinkAppenderFactory(schema, flinkSchema, table.properties(), spec,
-            ArrayUtil.toIntArray(equalityFieldIds), TypeUtil.select(schema, Sets.newHashSet(equalityFieldIds)), null);
+            ArrayUtil.toIntArray(equalityFieldIds), TypeUtil.select(schema, equalityFieldIdsSet), null);
       } else {
         this.appenderFactory = new FlinkAppenderFactory(schema, flinkSchema, table.properties(), spec,
             ArrayUtil.toIntArray(equalityFieldIds), schema, null);

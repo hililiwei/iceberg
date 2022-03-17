@@ -62,9 +62,6 @@ public class RowDataTaskWriterFactory implements TaskWriterFactory<RowData> {
 
   private transient OutputFileFactory outputFileFactory;
 
-  // This is a good candidate to update. But I think there was a config backported to
-  // 0.14.3 that needs to be set to not materialize _only_ +I during upsert.
-  //
   public RowDataTaskWriterFactory(Table table,
                                   RowType flinkSchema,
                                   long targetFileSizeBytes,
@@ -80,19 +77,6 @@ public class RowDataTaskWriterFactory implements TaskWriterFactory<RowData> {
     this.format = format;
     this.equalityFieldIds = equalityFieldIds;
     this.upsert = upsert;
-
-    // Check if the present partition spec is equivalent to the equality field ids (case that is currently failing).
-    Set<Integer> partitionFieldIds =
-          table.spec().fields().stream().map(PartitionField::sourceId).collect(Collectors.toSet());
-
-    // LOG.error("equalityFieldIds are: {}", ImmutableSet.copyOf(equalityFieldIds));
-    // LOG.error("partitionFieldIds are: {}", ImmutableSet.copyOf(partitionFieldIds));
-    // Schema eqDeleteRowSchema = null;
-    // if (Objects.equals(partitionFieldIds, equalityFieldIdsSet)) {
-    //   eqDeleteRowSchema = TypeUtil.select(schema, Sets.difference(equalityFieldIdsSet, partitionFieldIds));
-    // } else {
-    //   eqDeleteRowSchema = TypeUtil.select(schema, Sets.newHashSet(equalityFieldIds));
-    // }
 
     if (equalityFieldIds == null || equalityFieldIds.isEmpty()) {
       this.appenderFactory = new FlinkAppenderFactory(schema, flinkSchema, table.properties(), spec);

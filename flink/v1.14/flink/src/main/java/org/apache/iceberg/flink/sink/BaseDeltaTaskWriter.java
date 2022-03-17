@@ -77,24 +77,15 @@ abstract class BaseDeltaTaskWriter extends BaseTaskWriter<RowData> {
     switch (row.getRowKind()) {
       case INSERT:
       case UPDATE_AFTER:
-        LOG.error("+U - UPDATE_AFTER row: {}", row);
         if (upsert) {
           writer.delete(row);
         }
         writer.write(row);
         break;
 
-      // UPDATE_BEFORE is not necessary to apply to upsert, as all rows are emitted as INSERT records during upsert
-      // and we account for deleting the previous row by emitting a delete using the subset of fields
-      // that are not part of the equality fields once we hit the UPDATE_AFTER (which is modeled as an INSERT during
-      // upsert mode).
-      //
-      // TODO - Investigate Flink 1.15 changes that will start to allow for using CDC values (INSERT_BEFORE,
-      //  INSERT_AFTER) when using upsert. I think we're good as we already generally do what the newer
-      //  "upsert-kafka" sink does (which is caching data in memory about what has been most recently written
-      //  for a given key).
-      //
-      // See https://issues.apache.org/jira/browse/FLINK-20370 for recent upsert related changes.
+      // UPDATE_BEFORE is not necessary to apply to upsert, as all rows are modeled as INSERT records during upsert.
+      // We account for deleting the previous row by emitting a deleted row using the passed in equality delete
+      // file schema in the INSERT case if the writer is operating in upsert mode.
       case UPDATE_BEFORE:
         LOG.error("-U - UPDATE_BEFORE row: {}", row);
         if (upsert) {
@@ -103,7 +94,6 @@ abstract class BaseDeltaTaskWriter extends BaseTaskWriter<RowData> {
         writer.delete(row);
         break;
       case DELETE:
-        LOG.error("-D - DELETE row: {}", row);
         writer.delete(row);
         break;
 

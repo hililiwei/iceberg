@@ -81,8 +81,11 @@ abstract class BaseDeltaTaskWriter extends BaseTaskWriter<RowData> {
 
       // UPDATE_BEFORE is not necessary to apply in upsert mode, as all rows are modeled as INSERT
       // records.
-      // We account for deleting the previous row by emitting a deleted row using the passed in equality delete
-      // file schema in the INSERT case if the writer is operating in upsert mode.
+      //
+      // We account for deleting the previous row by calling delete when we get the INSERT, but that
+      // is the new row and not the upserted row.
+      //
+      // Updating the equality
       case UPDATE_BEFORE:
         if (upsert) {
           break;  // UPDATE_BEFORE is not necessary for UPDATE, we do nothing to prevent delete one row twice

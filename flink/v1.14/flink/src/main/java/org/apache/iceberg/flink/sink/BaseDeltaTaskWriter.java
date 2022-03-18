@@ -76,7 +76,12 @@ abstract class BaseDeltaTaskWriter extends BaseTaskWriter<RowData> {
       case INSERT:
       case UPDATE_AFTER:
         if (upsert) {
-          writer.deleteKey(row);
+          // Upserts come in modeled as INSERT. We need to be sure that
+          // we apply an equality delete, by using only the primary keys
+          // of the row as we don't have access to the old value as in the
+          // CDC case, only the upserted value. An equality delete for the
+          // keys will handle this.
+          writer.deleteByKey(row);
         }
         writer.write(row);
         break;
@@ -111,6 +116,13 @@ abstract class BaseDeltaTaskWriter extends BaseTaskWriter<RowData> {
     @Override
     protected StructLike asStructLike(RowData data) {
       return wrapper.wrap(data);
+    }
+
+    // TODO - Unsure if we'll need to implement this here. We might need to pass the schema
+    // through if so.
+    @Override
+    protected RowData asRowType(StructLike data) {
+      throw new UnsupportedOperationException("asRowType is not implemented");
     }
   }
 }

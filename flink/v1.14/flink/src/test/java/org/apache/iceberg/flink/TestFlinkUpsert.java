@@ -63,7 +63,8 @@ public class TestFlinkUpsert extends FlinkCatalogTestBase {
   @Parameterized.Parameters(name = "catalogName={0}, baseNamespace={1}, format={2}, isStreaming={3}")
   public static Iterable<Object[]> parameters() {
     List<Object[]> parameters = Lists.newArrayList();
-    for (FileFormat format : new FileFormat[] {FileFormat.PARQUET, FileFormat.AVRO, FileFormat.ORC}) {
+    for (FileFormat format : new FileFormat[] {FileFormat.PARQUET}) {
+    // for (FileFormat format : new FileFormat[] {FileFormat.PARQUET, FileFormat.AVRO, FileFormat.ORC}) {
       for (Boolean isStreaming : new Boolean[] {true, false}) {
         for (Object[] catalogParams : FlinkCatalogTestBase.parameters()) {
           String catalogName = (String) catalogParams[0];
@@ -182,7 +183,7 @@ public class TestFlinkUpsert extends FlinkCatalogTestBase {
 
       Assert.assertEquals("result should have 2 rows!", 2, result.size());
       Assert.assertEquals("result should have the correct rows",
-          Sets.newHashSet(result), Sets.newHashSet(Row.of(2, "aaa"), Row.of(3, "bbb")));
+          Sets.newHashSet(Row.of(2, "aaa"), Row.of(3, "bbb")), Sets.newHashSet(result));
 
       sql("INSERT INTO %s VALUES " +
           "(4, 'aaa')," +
@@ -240,7 +241,7 @@ public class TestFlinkUpsert extends FlinkCatalogTestBase {
 
       // Assert.assertEquals("result should have 2 rows!", 2, result.size());
       Assert.assertEquals("result should have the correct rows",
-          Sets.newHashSet(result), Sets.newHashSet(Row.of(4, "aaa", dt), Row.of(5, "bbb", dt)));
+          Sets.newHashSet(Row.of(4, "aaa", dt), Row.of(5, "bbb", dt)), Sets.newHashSet(result));
 
       sql("INSERT INTO %s VALUES " +
           "(6, 'aaa', TO_DATE('2022-03-01'))," +
@@ -251,7 +252,7 @@ public class TestFlinkUpsert extends FlinkCatalogTestBase {
 
       // Assert.assertEquals("result should have 2 rows!", 2, result.size());
       Assert.assertEquals("result should have the correct rows",
-          Sets.newHashSet(result), Sets.newHashSet(Row.of(6, "aaa", dt), Row.of(7, "bbb", dt)));
+          Sets.newHashSet(Row.of(6, "aaa", dt), Row.of(7, "bbb", dt)), Sets.newHashSet(result));
     } finally {
       sql("DROP TABLE IF EXISTS %s.%s", flinkDatabase, tableName);
     }
@@ -292,7 +293,7 @@ public class TestFlinkUpsert extends FlinkCatalogTestBase {
 
       // Assert.assertEquals("result should have 2 rows!", 2, result.size());
       Assert.assertEquals("result should have the correct rows",
-          Sets.newHashSet(result), Sets.newHashSet(Row.of("aaa", dt, 4), Row.of("bbb", dt, 5)));
+          Sets.newHashSet(Row.of("aaa", dt, 4), Row.of("bbb", dt, 5)), Sets.newHashSet(result));
 
       sql("INSERT INTO %s VALUES " +
           "('aaa', TO_DATE('2022-03-01'), 6)," +
@@ -303,7 +304,7 @@ public class TestFlinkUpsert extends FlinkCatalogTestBase {
 
       // Assert.assertEquals("result should have 2 rows!", 2, result.size());
       Assert.assertEquals("result should have the correct rows",
-          Sets.newHashSet(result), Sets.newHashSet(Row.of("aaa", dt, 6), Row.of("bbb", dt, 7)));
+          Sets.newHashSet(Row.of("aaa", dt, 6), Row.of("bbb", dt, 7)), Sets.newHashSet(result));
     } finally {
       sql("DROP TABLE IF EXISTS %s.%s", flinkDatabase, tableName);
     }

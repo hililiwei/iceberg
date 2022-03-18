@@ -84,6 +84,10 @@ public class RowDataTaskWriterFactory implements TaskWriterFactory<RowData> {
       this.appenderFactory = new FlinkAppenderFactory(schema, flinkSchema, table.properties(), spec);
     } else {
 
+      // else iof upsert
+      //  new stuff
+      // else
+      //  old stuff.
       /**
       Set<Integer> partitionFieldSourceIdsSet =
           spec.fields().stream().map(PartitionField::sourceId).collect(Collectors.toSet());
@@ -99,10 +103,11 @@ public class RowDataTaskWriterFactory implements TaskWriterFactory<RowData> {
             ArrayUtil.toIntArray(equalityFieldIds), schema, null);
       }
       **/
-      // this.appenderFactory = new FlinkAppenderFactory(schema, flinkSchema, table.properties(), spec,
-      //     ArrayUtil.toIntArray(equalityFieldIds), schema, null);
       this.appenderFactory = new FlinkAppenderFactory(schema, flinkSchema, table.properties(), spec,
-          ArrayUtil.toIntArray(equalityFieldIds), TypeUtil.select(schema, Sets.newHashSet(equalityFieldIds)), null);
+          ArrayUtil.toIntArray(equalityFieldIds), schema, null);
+      // if (upsert) {
+      // this.appenderFactory = new FlinkAppenderFactory(schema, flinkSchema, table.properties(), spec,
+      //     ArrayUtil.toIntArray(equalityFieldIds), TypeUtil.select(schema, Sets.newHashSet(equalityFieldIds)), null);
     }
   }
 

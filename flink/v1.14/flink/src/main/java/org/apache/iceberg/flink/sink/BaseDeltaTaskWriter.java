@@ -28,7 +28,9 @@ import org.apache.iceberg.PartitionKey;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.StructLike;
+import org.apache.iceberg.flink.FlinkSchemaUtil;
 import org.apache.iceberg.flink.RowDataWrapper;
+import org.apache.iceberg.flink.data.RowDataProjection;
 import org.apache.iceberg.io.BaseTaskWriter;
 import org.apache.iceberg.io.FileAppenderFactory;
 import org.apache.iceberg.io.FileIO;
@@ -41,6 +43,7 @@ abstract class BaseDeltaTaskWriter extends BaseTaskWriter<RowData> {
   private final Schema schema;
   private final Schema deleteSchema;
   private final RowDataWrapper wrapper;
+  private final RowDataWrapper wrapperDelete;
   private final boolean upsert;
 
   BaseDeltaTaskWriter(PartitionSpec spec,
@@ -57,6 +60,7 @@ abstract class BaseDeltaTaskWriter extends BaseTaskWriter<RowData> {
     this.schema = schema;
     this.deleteSchema = TypeUtil.select(schema, Sets.newHashSet(equalityFieldIds));
     this.wrapper = new RowDataWrapper(flinkSchema, schema.asStruct());
+    this.wrapperDelete = new RowDataWrapper(FlinkSchemaUtil.convert(deleteSchema), deleteSchema.asStruct());
     this.upsert = upsert;
   }
 
@@ -74,7 +78,8 @@ abstract class BaseDeltaTaskWriter extends BaseTaskWriter<RowData> {
       case INSERT:
       case UPDATE_AFTER:
         if (upsert) {
-          writer.delete(row);
+          RowData wrap = RowDataProjection.create(schema, deleteSchema).wrap(row);
+          writer.deleteKey(wrap);
         }
         writer.write(row);
         break;
@@ -83,10 +88,21 @@ abstract class BaseDeltaTaskWriter extends BaseTaskWriter<RowData> {
         if (upsert) {
           break;  // UPDATE_BEFORE is not necessary for UPDATE, we do nothing to prevent delete one row twice
         }
-        writer.delete(row);
+        if (deleteSchema != null) {
+          RowData wrap = RowDataProjection.create(schema, deleteSchema).wrap(row);
+          writer.deleteKey(wrap);
+        } else {
+          writer.delete(row);
+        }
         break;
+
       case DELETE:
-        writer.delete(row);
+        if (deleteSchema != null) {
+          RowData wrap = RowDataProjection.create(schema, deleteSchema).wrap(row);
+          writer.deleteKey(wrap);
+        } else {
+          writer.delete(row);
+        }
         break;
 
       default:
@@ -102,6 +118,11 @@ abstract class BaseDeltaTaskWriter extends BaseTaskWriter<RowData> {
     @Override
     protected StructLike asStructLike(RowData data) {
       return wrapper.wrap(data);
+    }
+
+    @Override
+    protected StructLike asStructLikeKey(RowData data) {
+      return wrapperDelete.wrap(data);
     }
   }
 }

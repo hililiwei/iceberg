@@ -759,6 +759,51 @@ public class TestAddFilesProcedure extends SparkExtensionsTestBase {
         sql("SELECT * FROM %s ORDER BY id", tableName));
   }
 
+  @Test
+  public void testSkipOnError() throws IOException {
+    createUnpartitionedFileTable("parquet");
+
+    List<Object[]> source = sql("SELECT * FROM %s ORDER BY id", sourceTableName);
+    Assert.assertEquals(String.format("Rows in source table did not match\nExpected :%s rows \nFound    :%s",
+        8, source.size()), 8, source.size());
+
+    String createIceberg =
+        "CREATE TABLE %s (id Integer, name String, dept String, subdept String) USING iceberg";
+
+    sql(createIceberg, tableName);
+
+    File[] expectedFiles = fileTableDir.listFiles((dir, name) -> !name.endsWith("crc") && !name.contains("_SUCCESS"));
+
+    Assert.assertEquals("Expected number of source files", 2, expectedFiles.length);
+
+    // Corrupt the second file
+    Assume.assumeTrue("Delete source file!", expectedFiles[1].delete());
+    Assume.assumeTrue("Create a empty source file!", expectedFiles[1].createNewFile());
+
+    AssertHelpers.assertThrows(
+        "Expected an exception",
+        RuntimeException.class,
+        "not a Parquet file (length is too low: 0)",
+        () -> scalarSql("CALL %s.system.add_files(" +
+                "table => '%s', " +
+                "source_table => '%s'," +
+                "skip_on_error => false)",
+            catalogName, tableName, sourceTableName));
+
+    Object result = scalarSql("CALL %s.system.add_files(" +
+            "table => '%s'," +
+            "source_table => '%s'," +
+            "skip_on_error => true)",
+        catalogName, tableName, sourceTableName);
+
+    Assert.assertEquals(1L, result);
+
+    List<Object[]> actual = sql("SELECT * FROM %s ORDER BY id", tableName);
+
+    Assert.assertEquals(String.format("Rows in table did not match\nExpected :%s rows \nFound    :%s",
+        4, actual.size()), 4, actual.size());
+  }
+
   private static final List<Object[]> emptyQueryResult = Lists.newArrayList();
 
   private static final StructField[] struct = {

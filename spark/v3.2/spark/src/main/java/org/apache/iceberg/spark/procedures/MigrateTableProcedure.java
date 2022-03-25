@@ -23,6 +23,7 @@ import java.util.Map;
 import org.apache.iceberg.actions.MigrateTable;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.relocated.com.google.common.collect.Maps;
+import org.apache.iceberg.spark.actions.SparkActionOptions;
 import org.apache.iceberg.spark.actions.SparkActions;
 import org.apache.iceberg.spark.procedures.SparkProcedures.ProcedureBuilder;
 import org.apache.spark.sql.catalyst.InternalRow;
@@ -37,7 +38,8 @@ import scala.runtime.BoxedUnit;
 class MigrateTableProcedure extends BaseProcedure {
   private static final ProcedureParameter[] PARAMETERS = new ProcedureParameter[]{
       ProcedureParameter.required("table", DataTypes.StringType),
-      ProcedureParameter.optional("properties", STRING_MAP)
+      ProcedureParameter.optional("properties", STRING_MAP),
+      ProcedureParameter.optional("skip_on_error", DataTypes.BooleanType)
   };
 
   private static final StructType OUTPUT_TYPE = new StructType(new StructField[]{
@@ -81,8 +83,13 @@ class MigrateTableProcedure extends BaseProcedure {
             return BoxedUnit.UNIT;
           });
     }
+    Map<String, String> options = Maps.newHashMap();
+    if (!args.isNullAt(2)) {
+      options.put(SparkActionOptions.SKIP_ON_ERROR, Boolean.toString(args.getBoolean(2)));
+    }
 
-    MigrateTable.Result result = SparkActions.get().migrateTable(tableName).tableProperties(properties).execute();
+    MigrateTable.Result result =
+        SparkActions.get().migrateTable(tableName).tableProperties(properties).options(options).execute();
     return new InternalRow[] {newInternalRow(result.migratedDataFilesCount())};
   }
 

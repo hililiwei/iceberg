@@ -372,10 +372,10 @@ public class TestCreateActions extends SparkCatalogTestBase {
   }
 
   @Test
-  public void testMigrateSkipCorruptFiles() throws Exception {
+  public void testMigrateSkipOnError() throws Exception {
     Assume.assumeTrue("Cannot migrate to a hadoop based catalog", !type.equals("hadoop"));
     Assume.assumeTrue("Can only migrate from Spark Session Catalog", catalog.name().equals("spark_catalog"));
-    String source = sourceName("test_migrate_skip_corrupt_table");
+    String source = sourceName("test_migrate_skip_on_error_table");
     String dest = source;
 
     File location = temp.newFolder();
@@ -400,16 +400,16 @@ public class TestCreateActions extends SparkCatalogTestBase {
     Assume.assumeTrue("Create a empty source file!", file.createNewFile());
 
     MigrateTable migrateAction = SparkActions.get().migrateTable(source)
-        .option(SparkActionOptions.SKIP_CORRUPT_FILES, "false");
+        .option(SparkActionOptions.SKIP_ON_ERROR, "false");
 
     AssertHelpers.assertThrows("Expected an exception",
         RuntimeException.class,
         "not a Parquet file (length is too low: 0)",
         migrateAction::execute);
 
-    // skip corrupted file
+    // skip files which cannot be imported into Iceberg
     migrateAction = SparkActions.get().migrateTable(source)
-        .option(SparkActionOptions.SKIP_CORRUPT_FILES, "true");
+        .option(SparkActionOptions.SKIP_ON_ERROR, "true");
 
     MigrateTable.Result migratedFiles = migrateAction.execute();
     validateTables(source, dest);

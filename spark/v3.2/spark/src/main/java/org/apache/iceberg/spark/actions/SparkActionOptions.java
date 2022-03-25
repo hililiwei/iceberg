@@ -24,7 +24,7 @@ public class SparkActionOptions {
   private SparkActionOptions() {
   }
 
-  public static final String SKIP_CORRUPT_FILES = "skip.corrupt.files";
-  public static final boolean SKIP_CORRUPT_FILES_DEFAULT = false;
+  public static final String SKIP_ON_ERROR = "skip.on.error";
+  public static final boolean SKIP_ON_ERROR_DEFAULT = false;
 
 }

@@ -295,7 +295,7 @@ public class SparkTableUtil {
    * @param conf a serializable Hadoop conf
    * @param metricsConfig a metrics conf
    * @param mapping a name mapping
-   * @param skipCorruptFiles if true, skip corrupt files
+   * @param skipOnError if true, skip files which cannot be imported into Iceberg
    * @return a List of DataFile
    * @deprecated use {@link TableMigrationUtil#listPartition(Map, String, String, PartitionSpec, Configuration,
    * MetricsConfig, NameMapping, boolean)}
@@ -303,9 +303,9 @@ public class SparkTableUtil {
   @Deprecated
   public static List<DataFile> listPartition(SparkPartition partition, PartitionSpec spec,
                                              SerializableConfiguration conf, MetricsConfig metricsConfig,
-                                             NameMapping mapping, boolean skipCorruptFiles) {
+                                             NameMapping mapping, boolean skipOnError) {
     return TableMigrationUtil.listPartition(partition.values, partition.uri, partition.format, spec, conf.get(),
-        metricsConfig, mapping, skipCorruptFiles);
+        metricsConfig, mapping, skipOnError);
   }
 
 
@@ -395,7 +395,7 @@ public class SparkTableUtil {
     private final String stagingDir;
     private Map<String, String> partitionFilter = Collections.emptyMap();
     private boolean checkDuplicateFiles = false;
-    private boolean skipCorruptFiles = false;
+    private boolean skipOnError = false;
 
     public ImportSparkTableBuilder(SparkSession spark, TableIdentifier sourceTableIdent, Table targetTable,
         String stagingDir) {
@@ -415,14 +415,14 @@ public class SparkTableUtil {
       return this;
     }
 
-    public ImportSparkTableBuilder skipCorruptFiles(boolean newSkipCorruptFiles) {
-      this.skipCorruptFiles = newSkipCorruptFiles;
+    public ImportSparkTableBuilder skipOnError(boolean newSkipOnError) {
+      this.skipOnError = newSkipOnError;
       return this;
     }
 
     public void execute() {
       importSparkTable(spark, sourceTableIdent, targetTable, stagingDir, partitionFilter, checkDuplicateFiles,
-          skipCorruptFiles);
+          skipOnError);
     }
   }
 
@@ -438,11 +438,11 @@ public class SparkTableUtil {
    * @param targetTable an Iceberg table where to import the data
    * @param stagingDir a staging directory to store temporary manifest files
    * @param checkDuplicateFiles if true, throw exception if import results in a duplicate data file
-   * @param skipCorruptFiles    if true, skip corrupted files
+   * @param skipOnError if true, skip files which cannot be imported into Iceberg
    */
   public static void importSparkTable(SparkSession spark, TableIdentifier sourceTableIdent, Table targetTable,
                                       String stagingDir, Map<String, String> partitionFilter,
-                                      boolean checkDuplicateFiles, boolean skipCorruptFiles) {
+                                      boolean checkDuplicateFiles, boolean skipOnError) {
     SessionCatalog catalog = spark.sessionState().catalog();
 
     String db = sourceTableIdent.database().nonEmpty() ?
@@ -459,14 +459,14 @@ public class SparkTableUtil {
 
       if (Objects.equal(spec, PartitionSpec.unpartitioned())) {
         importUnpartitionedSparkTable(spark, sourceTableIdentWithDB, targetTable, checkDuplicateFiles,
-            skipCorruptFiles);
+            skipOnError);
       } else {
         List<SparkPartition> sourceTablePartitions = getPartitions(spark, sourceTableIdent,
             partitionFilter);
         Preconditions.checkArgument(!sourceTablePartitions.isEmpty(),
             "Cannot find any partitions in table %s", sourceTableIdent);
         importSparkPartitions(spark, sourceTablePartitions, targetTable, spec, stagingDir, checkDuplicateFiles,
-            skipCorruptFiles);
+            skipOnError);
       }
     } catch (AnalysisException e) {
       throw SparkExceptionUtil.toUncheckedException(
@@ -534,7 +534,7 @@ public class SparkTableUtil {
 
   private static void importUnpartitionedSparkTable(SparkSession spark, TableIdentifier sourceTableIdent,
                                                     Table targetTable, boolean checkDuplicateFiles,
-                                                    boolean skipCorruptFiles) {
+                                                    boolean skipOnError) {
     try {
       CatalogTable sourceTable = spark.sessionState().catalog().getTableMetadata(sourceTableIdent);
       Option<String> format =
@@ -550,7 +550,7 @@ public class SparkTableUtil {
 
       List<DataFile> files = TableMigrationUtil.listPartition(
           partition, Util.uriToString(sourceTable.location()), format.get(), spec, conf, metricsConfig, nameMapping,
-          skipCorruptFiles);
+          skipOnError);
 
       if (checkDuplicateFiles) {
         Dataset<Row> importedFiles = spark.createDataset(
@@ -587,7 +587,7 @@ public class SparkTableUtil {
    */
   public static void importSparkPartitions(SparkSession spark, List<SparkPartition> partitions, Table targetTable,
                                            PartitionSpec spec, String stagingDir, boolean checkDuplicateFiles,
-                                           boolean skipCorruptFiles) {
+                                           boolean skipOnError) {
     Configuration conf = spark.sessionState().newHadoopConf();
     SerializableConfiguration serializableConf = new SerializableConfiguration(conf);
     int parallelism = Math.min(partitions.size(), spark.sessionState().conf().parallelPartitionDiscoveryParallelism());
@@ -605,7 +605,7 @@ public class SparkTableUtil {
 
     Dataset<DataFile> filesToImport = partitionDS
         .flatMap((FlatMapFunction<SparkPartition, DataFile>) sparkPartition ->
-                listPartition(sparkPartition, spec, serializableConf, metricsConfig, nameMapping, skipCorruptFiles)
+                listPartition(sparkPartition, spec, serializableConf, metricsConfig, nameMapping, skipOnError)
                     .iterator(),
             Encoders.javaSerialization(DataFile.class));
 

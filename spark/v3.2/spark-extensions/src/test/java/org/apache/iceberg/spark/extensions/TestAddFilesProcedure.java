@@ -760,7 +760,7 @@ public class TestAddFilesProcedure extends SparkExtensionsTestBase {
   }
 
   @Test
-  public void testSkipCorruptFiles() throws IOException {
+  public void testSkipOnError() throws IOException {
     createUnpartitionedFileTable("parquet");
 
     List<Object[]> source = sql("SELECT * FROM %s ORDER BY id", sourceTableName);
@@ -787,13 +787,13 @@ public class TestAddFilesProcedure extends SparkExtensionsTestBase {
         () -> scalarSql("CALL %s.system.add_files(" +
                 "table => '%s', " +
                 "source_table => '%s'," +
-                "skip_corrupt_files => false)",
+                "skip_on_error => false)",
             catalogName, tableName, sourceTableName));
 
     Object result = scalarSql("CALL %s.system.add_files(" +
             "table => '%s'," +
             "source_table => '%s'," +
-            "skip_corrupt_files => true)",
+            "skip_on_error => true)",
         catalogName, tableName, sourceTableName);
 
     Assert.assertEquals(1L, result);

@@ -114,8 +114,8 @@ public class BaseMigrateTableSparkAction
     StagedSparkTable stagedTable = null;
     Table icebergTable;
 
-    boolean skipCorruptFiles = PropertyUtil.propertyAsBoolean(options(), SparkActionOptions.SKIP_CORRUPT_FILES,
-        SparkActionOptions.SKIP_CORRUPT_FILES_DEFAULT);
+    boolean skipOnError = PropertyUtil.propertyAsBoolean(options(), SparkActionOptions.SKIP_ON_ERROR,
+        SparkActionOptions.SKIP_ON_ERROR_DEFAULT);
 
     boolean threw = true;
     try {
@@ -131,7 +131,7 @@ public class BaseMigrateTableSparkAction
       String stagingLocation = getMetadataLocation(icebergTable);
       LOG.info("Generating Iceberg metadata for {} in {}", destTableIdent(), stagingLocation);
       SparkTableUtil.importSparkTableBuilder(spark(), v1BackupIdent, icebergTable, stagingLocation)
-          .skipCorruptFiles(skipCorruptFiles)
+          .skipOnError(skipOnError)
           .execute();
 
       LOG.info("Committing staged changes to {}", destTableIdent());

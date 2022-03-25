@@ -77,13 +77,13 @@ public class TableMigrationUtil {
    * @param conf          a Hadoop conf
    * @param metricsConfig a metrics conf
    * @param mapping       a name mapping
-   * @param skipCorruptFiles if true, skip corrupt files
+   * @param skipOnError if true, skip files which cannot be imported into Iceberg
    * @return a List of DataFile
    */
   public static List<DataFile> listPartition(Map<String, String> partition, String uri, String format,
                                              PartitionSpec spec, Configuration conf, MetricsConfig metricsConfig,
-                                             NameMapping mapping, boolean skipCorruptFiles) {
-    return listPartition(partition, uri, format, spec, conf, metricsConfig, mapping, 1, skipCorruptFiles);
+                                             NameMapping mapping, boolean skipOnError) {
+    return listPartition(partition, uri, format, spec, conf, metricsConfig, mapping, 1, skipOnError);
   }
 
   /**
@@ -112,7 +112,7 @@ public class TableMigrationUtil {
 
   public static List<DataFile> listPartition(Map<String, String> partitionPath, String partitionUri, String format,
                                              PartitionSpec spec, Configuration conf, MetricsConfig metricsSpec,
-                                             NameMapping mapping, int parallelism, boolean skipCorruptFiles) {
+                                             NameMapping mapping, int parallelism, boolean skipOnError) {
     ExecutorService service = null;
     try {
       String partitionKey = spec.fields().stream()
@@ -128,11 +128,10 @@ public class TableMigrationUtil {
       DataFile[] datafiles = new DataFile[fileStatus.size()];
       Tasks.Builder<Integer> task = Tasks.range(fileStatus.size());
 
-      if (skipCorruptFiles) {
+      if (skipOnError) {
         task.suppressFailureWhenFinished();
       } else {
-        task.stopOnFailure()
-            .throwFailureWhenFinished();
+        task.stopOnFailure().throwFailureWhenFinished();
       }
 
       if (parallelism > 1) {
@@ -156,7 +155,7 @@ public class TableMigrationUtil {
           datafiles[index] = buildDataFile(fileStatus.get(index), partitionKey, spec, metrics, "orc");
         });
       } else {
-        if (skipCorruptFiles) {
+        if (skipOnError) {
           LOG.warn("Unknown partition format: {}", format);
         } else {
           throw new UnsupportedOperationException("Unknown partition format: " + format);
@@ -178,8 +177,7 @@ public class TableMigrationUtil {
       long rowCount = Avro.rowCount(file);
       return new Metrics(rowCount, null, null, null, null);
     } catch (UncheckedIOException e) {
-      throw new RuntimeException("Unable to read Avro file: " +
-          path, e);
+      throw new RuntimeException("Unable to read Avro file: " + path, e);
     }
   }
 

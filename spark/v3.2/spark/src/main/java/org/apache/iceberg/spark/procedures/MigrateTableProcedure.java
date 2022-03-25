@@ -39,7 +39,7 @@ class MigrateTableProcedure extends BaseProcedure {
   private static final ProcedureParameter[] PARAMETERS = new ProcedureParameter[]{
       ProcedureParameter.required("table", DataTypes.StringType),
       ProcedureParameter.optional("properties", STRING_MAP),
-      ProcedureParameter.optional("skip_corrupt_files", DataTypes.BooleanType)
+      ProcedureParameter.optional("skip_on_error", DataTypes.BooleanType)
   };
 
   private static final StructType OUTPUT_TYPE = new StructType(new StructField[]{
@@ -85,7 +85,7 @@ class MigrateTableProcedure extends BaseProcedure {
     }
     Map<String, String> options = Maps.newHashMap();
     if (!args.isNullAt(2)) {
-      options.put(SparkActionOptions.SKIP_CORRUPT_FILES, Boolean.toString(args.getBoolean(2)));
+      options.put(SparkActionOptions.SKIP_ON_ERROR, Boolean.toString(args.getBoolean(2)));
     }
 
     MigrateTable.Result result =

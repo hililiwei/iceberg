@@ -151,7 +151,7 @@ public class TestMigrateTableProcedure extends SparkExtensionsTestBase {
   }
 
   @Test
-  public void testMigrateSkipCouuptFiles() throws IOException {
+  public void testMigrateSkipOnError() throws IOException {
     Assume.assumeTrue(catalogName.equals("spark_catalog"));
 
     String location = temp.newFolder().toString();
@@ -177,7 +177,7 @@ public class TestMigrateTableProcedure extends SparkExtensionsTestBase {
 
     Object result = scalarSql("CALL %s.system.migrate(" +
             "table => '%s', " +
-            "skip_corrupt_files => true)",
+            "skip_on_error => true)",
         catalogName, tableName);
 
     Assert.assertEquals(1L, result);

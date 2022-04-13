@@ -19,10 +19,10 @@
 
 package org.apache.iceberg.flink;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -37,11 +37,19 @@ import org.apache.flink.table.connector.source.abilities.SupportsProjectionPushD
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.expressions.ResolvedExpression;
 import org.apache.flink.table.types.DataType;
+import org.apache.flink.table.types.FieldsDataType;
+import org.apache.flink.table.types.logical.LogicalType;
+import org.apache.flink.table.types.logical.LogicalTypeRoot;
+import org.apache.flink.table.types.logical.RowType;
+import org.apache.flink.table.types.logical.utils.LogicalTypeChecks;
+import org.apache.iceberg.exceptions.ValidationException;
 import org.apache.iceberg.expressions.Expression;
 import org.apache.iceberg.flink.source.FlinkSource;
+import org.apache.iceberg.flink.util.FlinkCompatibilityUtil;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableList;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
+import org.apache.iceberg.relocated.com.google.common.collect.Sets;
 
 /**
  * Flink Iceberg table source.
@@ -49,7 +57,7 @@ import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 public class IcebergTableSource
     implements ScanTableSource, SupportsProjectionPushDown, SupportsFilterPushDown, SupportsLimitPushDown {
 
-  private int[] projectedFields;
+  private int[][] projectedFields;
   private long limit;
   private List<Expression> filters;
 
@@ -76,7 +84,7 @@ public class IcebergTableSource
   }
 
   private IcebergTableSource(TableLoader loader, TableSchema schema, Map<String, String> properties,
-                             int[] projectedFields, boolean isLimitPushDown,
+                             int[][] projectedFields, boolean isLimitPushDown,
                              long limit, List<Expression> filters, ReadableConfig readableConfig) {
     this.loader = loader;
     this.schema = schema;
@@ -89,13 +97,8 @@ public class IcebergTableSource
   }
 
   @Override
-  public void applyProjection(int[][] projectFields) {
-    this.projectedFields = new int[projectFields.length];
-    for (int i = 0; i < projectFields.length; i++) {
-      Preconditions.checkArgument(projectFields[i].length == 1,
-          "Don't support nested projection in iceberg source now.");
-      this.projectedFields[i] = projectFields[i][0];
-    }
+  public void applyProjection(int[][] newProjectFields) {
+    this.projectedFields = newProjectFields;
   }
 
   private DataStream<RowData> createDataStream(StreamExecutionEnvironment execEnv) {
@@ -104,6 +107,7 @@ public class IcebergTableSource
         .tableLoader(loader)
         .properties(properties)
         .project(getProjectedSchema())
+        .projectFields(projectedFields)
         .limit(limit)
         .filters(filters)
         .flinkConf(readableConfig)
@@ -111,15 +115,7 @@ public class IcebergTableSource
   }
 
   private TableSchema getProjectedSchema() {
-    if (projectedFields == null) {
-      return schema;
-    } else {
-      String[] fullNames = schema.getFieldNames();
-      DataType[] fullTypes = schema.getFieldDataTypes();
-      return TableSchema.builder().fields(
-          Arrays.stream(projectedFields).mapToObj(i -> fullNames[i]).toArray(String[]::new),
-          Arrays.stream(projectedFields).mapToObj(i -> fullTypes[i]).toArray(DataType[]::new)).build();
-    }
+    return projectedFields == null ? schema : projectSchema(schema);
   }
 
   @Override
@@ -146,8 +142,7 @@ public class IcebergTableSource
 
   @Override
   public boolean supportsNestedProjection() {
-    // TODO: support nested projection
-    return false;
+    return true;
   }
 
   @Override
@@ -178,5 +173,49 @@ public class IcebergTableSource
   @Override
   public String asSummaryString() {
     return "Iceberg table source";
+  }
+
+  private TableSchema projectSchema(TableSchema tableSchema) {
+    Preconditions.checkArgument(
+        FlinkCompatibilityUtil.allPhysicalColumns(tableSchema),
+        "Projection is only supported for physical columns.");
+    TableSchema.Builder builder = TableSchema.builder();
+
+    FieldsDataType fields = (FieldsDataType) projectRow(tableSchema.toRowDataType(), projectedFields);
+    RowType topFields = (RowType) fields.getLogicalType();
+    for (int i = 0; i < topFields.getFieldCount(); i++) {
+      builder.field(topFields.getFieldNames().get(i), fields.getChildren().get(i));
+    }
+    return builder.build();
+  }
+
+  private DataType projectRow(DataType dataType, int[][] indexPaths) {
+    final List<RowType.RowField> updatedFields = Lists.newArrayList();
+    final List<DataType> updatedChildren = Lists.newArrayList();
+    Set<String> nameDomain = Sets.newHashSet();
+    for (int[] indexPath : indexPaths) {
+      DataType fieldType = dataType.getChildren().get(indexPath[0]);
+      LogicalType fieldLogicalType = fieldType.getLogicalType();
+      StringBuilder builder =
+          new StringBuilder(((RowType) dataType.getLogicalType()).getFieldNames().get(indexPath[0]));
+      for (int index = 1; index < indexPath.length; index++) {
+        Preconditions.checkArgument(LogicalTypeChecks.hasRoot(fieldLogicalType, LogicalTypeRoot.ROW),
+            "Row data type expected.");
+        RowType rowtype = ((RowType) fieldLogicalType);
+        builder.append(".").append(rowtype.getFieldNames().get(indexPath[index]));
+        fieldLogicalType = rowtype.getFields().get(indexPath[index]).getType();
+        fieldType = fieldType.getChildren().get(indexPath[index]);
+      }
+      String path = builder.toString();
+      if (nameDomain.contains(path)) {
+        throw new ValidationException("Invalid schema: multiple fields for name %s", path);
+      }
+
+      updatedFields.add(new RowType.RowField(path, fieldLogicalType));
+      updatedChildren.add(fieldType);
+      nameDomain.add(path);
+    }
+    return new FieldsDataType(new RowType(dataType.getLogicalType().isNullable(), updatedFields),
+        dataType.getConversionClass(), updatedChildren);
   }
 }

@@ -54,13 +54,13 @@ public class FlinkInputFormat extends RichInputFormat<RowData, FlinkInputSplit> 
   private transient long currentReadCount = 0L;
 
   FlinkInputFormat(TableLoader tableLoader, Schema tableSchema, FileIO io, EncryptionManager encryption,
-                   ScanContext context) {
+                   int[][] nestProjectedFields, ScanContext context) {
     this.tableLoader = tableLoader;
     this.io = io;
     this.encryption = encryption;
     this.context = context;
     this.rowDataReader = new RowDataFileScanTaskReader(tableSchema,
-        context.project(), context.nameMapping(), context.caseSensitive());
+        context.project(), context.nameMapping(), context.caseSensitive(), nestProjectedFields);
   }
 
   @VisibleForTesting

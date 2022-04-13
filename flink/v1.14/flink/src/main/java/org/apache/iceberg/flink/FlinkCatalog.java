@@ -470,11 +470,9 @@ public class FlinkCatalog extends AbstractCatalog {
     Preconditions.checkArgument(table instanceof CatalogTable, "The Table should be a CatalogTable.");
 
     TableSchema schema = table.getSchema();
-    schema.getTableColumns().forEach(column -> {
-      if (!FlinkCompatibilityUtil.isPhysicalColumn(column)) {
-        throw new UnsupportedOperationException("Creating table with computed columns is not supported yet.");
-      }
-    });
+    if (!FlinkCompatibilityUtil.allPhysicalColumns(schema)) {
+      throw new UnsupportedOperationException("Creating table with computed columns is not supported yet.");
+    }
 
     if (!schema.getWatermarkSpecs().isEmpty()) {
       throw new UnsupportedOperationException("Creating table with watermark specs is not supported yet.");

@@ -57,7 +57,6 @@ class OrcFileAppender<D> implements FileAppender<D> {
   private final int batchSize;
   private final OutputFile file;
   private final Writer writer;
-  private final TreeWriter treeWriter;
   private final VectorizedRowBatch batch;
   private final int avgRowByteSize;
   private final OrcRowWriter<D> valueWriter;
@@ -92,8 +91,6 @@ class OrcFileAppender<D> implements FileAppender<D> {
     options.setSchema(orcSchema);
     this.writer = newOrcWriter(file, options, metadata);
 
-    // TODO: Turn to access the estimateMemorySize directly after ORC 1.7.4 released with https://github.com/apache/orc/pull/1057.
-    this.treeWriter =  treeWriterHiddenInORC();
     this.valueWriter = newOrcRowWriter(schema, orcSchema, createWriterFunc);
   }
 
@@ -123,10 +120,7 @@ class OrcFileAppender<D> implements FileAppender<D> {
       return file.toInputFile().getLength();
     }
 
-    Preconditions.checkNotNull(treeWriter,
-        "Cannot estimate length of file being written as the ORC writer's internal writer is not present");
-
-    long estimateMemory = treeWriter.estimateMemory();
+    long estimateMemory = writer.estimateMemory();
 
     long dataLength = 0;
     try {
@@ -192,11 +186,5 @@ class OrcFileAppender<D> implements FileAppender<D> {
                                                      BiFunction<Schema, TypeDescription, OrcRowWriter<?>>
                                                          createWriterFunc) {
     return (OrcRowWriter<D>) createWriterFunc.apply(schema, orcSchema);
-  }
-
-  private TreeWriter treeWriterHiddenInORC() {
-    DynFields.BoundField<TreeWriter> treeWriterFiled =
-        DynFields.builder().hiddenImpl(writer.getClass(), "treeWriter").build(writer);
-    return treeWriterFiled.get();
   }
 }

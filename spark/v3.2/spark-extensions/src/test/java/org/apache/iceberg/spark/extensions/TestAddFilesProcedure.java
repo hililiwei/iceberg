@@ -763,22 +763,13 @@ public class TestAddFilesProcedure extends SparkExtensionsTestBase {
   public void testSkipOnError() throws IOException {
     createUnpartitionedFileTable("parquet");
 
-    List<Object[]> source = sql("SELECT * FROM %s ORDER BY id", sourceTableName);
-    Assert.assertEquals(String.format("Rows in source table did not match\nExpected :%s rows \nFound    :%s",
-        8, source.size()), 8, source.size());
-
     String createIceberg =
         "CREATE TABLE %s (id Integer, name String, dept String, subdept String) USING iceberg";
 
     sql(createIceberg, tableName);
 
-    File[] expectedFiles = fileTableDir.listFiles((dir, name) -> !name.endsWith("crc") && !name.contains("_SUCCESS"));
-
-    Assert.assertEquals("Expected number of source files", 2, expectedFiles.length);
-
-    // Corrupt the second file
-    Assume.assumeTrue("Delete source file!", expectedFiles[1].delete());
-    Assume.assumeTrue("Create a empty source file!", expectedFiles[1].createNewFile());
+    // Create an empty(considered corrupted) file.
+    Assert.assertTrue(new File(fileTableDir + File.separator + "corrupt.parquet").createNewFile());
 
     AssertHelpers.assertThrows(
         "Expected an exception",
@@ -790,18 +781,17 @@ public class TestAddFilesProcedure extends SparkExtensionsTestBase {
                 "skip_on_error => false)",
             catalogName, tableName, sourceTableName));
 
-    Object result = scalarSql("CALL %s.system.add_files(" +
+    Object tableResult = scalarSql("CALL %s.system.add_files(" +
             "table => '%s'," +
             "source_table => '%s'," +
             "skip_on_error => true)",
         catalogName, tableName, sourceTableName);
 
-    Assert.assertEquals(1L, result);
+    Assert.assertEquals(2L, tableResult);
 
-    List<Object[]> actual = sql("SELECT * FROM %s ORDER BY id", tableName);
-
-    Assert.assertEquals(String.format("Rows in table did not match\nExpected :%s rows \nFound    :%s",
-        4, actual.size()), 4, actual.size());
+    assertEquals("Rows in table did not match",
+        rowsToJava(unpartitionedDF.unionAll(unpartitionedDF).orderBy("id").collectAsList()),
+        sql("SELECT * FROM %s ORDER BY id", tableName));
   }
 
   private static final List<Object[]> emptyQueryResult = Lists.newArrayList();

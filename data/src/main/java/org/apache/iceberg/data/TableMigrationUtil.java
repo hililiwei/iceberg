@@ -156,9 +156,10 @@ public class TableMigrationUtil {
         });
       } else {
         if (skipOnError) {
-          LOG.warn("Unknown partition format: {}", format);
+          LOG.warn("Skipping unknown partition format: {} - {}", format, partitionUri);
         } else {
-          throw new UnsupportedOperationException("Unknown partition format: " + format);
+          throw new UnsupportedOperationException(
+              "Unknown partition format: " + format + " - " + partitionUri + ", set skip_on_error=true to skip it.");
         }
       }
       return Arrays.stream(datafiles).filter(Objects::nonNull).collect(Collectors.toList());

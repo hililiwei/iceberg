@@ -64,10 +64,10 @@ class Transform(ABC, Generic[S, T]):
     def __str__(self):
         return self._transform_string
 
-    def __call__(self, value: S) -> Optional[T]:
+    def __call__(self, value: Optional[S]) -> Optional[T]:
         return self.apply(value)
 
-    def apply(self, value: S) -> Optional[T]:
+    def apply(self, value: Optional[S]) -> Optional[T]:
         ...
 
     def can_transform(self, source: IcebergType) -> bool:
@@ -83,10 +83,8 @@ class Transform(ABC, Generic[S, T]):
     def satisfies_order_of(self, other) -> bool:
         return self == other
 
-    def to_human_string(self, value) -> str:
-        if value is None:
-            return "null"
-        return str(value)
+    def to_human_string(self, value: Optional[S]) -> str:
+        return str(value) if value is not None else "null"
 
     @property
     def dedup_name(self) -> str:
@@ -119,11 +117,8 @@ class BaseBucketTransform(Transform[S, int]):
     def hash(self, value: S) -> int:
         raise NotImplementedError()
 
-    def apply(self, value: S) -> Optional[int]:
-        if value is None:
-            return None
-
-        return (self.hash(value) & IntegerType.max) % self._num_buckets
+    def apply(self, value: Optional[S]) -> Optional[int]:
+        return (self.hash(value) & IntegerType.max) % self._num_buckets if value else None
 
     def result_type(self, source: IcebergType) -> IcebergType:
         return IntegerType()
@@ -239,7 +234,7 @@ class UnknownTransform(Transform):
         self._type = source_type
         self._transform = transform
 
-    def apply(self, value):
+    def apply(self, value: Optional[S]):
         raise AttributeError(f"Cannot apply unsupported transform: {self}")
 
     def can_transform(self, target: IcebergType) -> bool:
@@ -247,6 +242,32 @@ class UnknownTransform(Transform):
 
     def result_type(self, source: IcebergType) -> IcebergType:
         return StringType()
+
+
+class VoidTransform(Transform):
+    """A transform that always returns None"""
+
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(VoidTransform, cls).__new__(cls)
+        return cls._instance
+
+    def __init__(self):
+        super().__init__("void", "transforms.always_null()")
+
+    def apply(self, value: Optional[S]) -> None:
+        return None
+
+    def can_transform(self, target: IcebergType) -> bool:
+        return True
+
+    def result_type(self, source: IcebergType) -> IcebergType:
+        return source
+
+    def to_human_string(self, value: Optional[S]) -> str:
+        return "null"
 
 
 def bucket(source_type: IcebergType, num_buckets: int) -> BaseBucketTransform:
@@ -264,3 +285,7 @@ def bucket(source_type: IcebergType, num_buckets: int) -> BaseBucketTransform:
         return BucketUUIDTransform(num_buckets)
     else:
         raise ValueError(f"Cannot bucket by type: {source_type}")
+
+
+def always_null() -> Transform:
+    return VoidTransform()

@@ -19,8 +19,6 @@
 package org.apache.iceberg.hive;
 
 import static java.nio.file.Files.createTempDirectory;
-import static java.nio.file.attribute.PosixFilePermissions.asFileAttribute;
-import static java.nio.file.attribute.PosixFilePermissions.fromString;
 
 import java.io.File;
 import java.io.IOException;
@@ -32,6 +30,7 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -98,11 +97,10 @@ public class TestHiveMetastore {
 
   static {
     try {
-      HIVE_LOCAL_DIR =
-          createTempDirectory("hive", asFileAttribute(fromString("rwxrwxrwx"))).toFile();
+      HIVE_LOCAL_DIR = createTempDirectory("hive").toFile();
       DERBY_PATH = new File(HIVE_LOCAL_DIR, "metastore_db").getPath();
       File derbyLogFile = new File(HIVE_LOCAL_DIR, "derby.log");
-      System.setProperty("derby.stream.error.file", derbyLogFile.getAbsolutePath());
+      System.setProperty("derby.stream.error.file", getCrossOSPath(derbyLogFile));
       setupMetastoreDB("jdbc:derby:" + DERBY_PATH + ";create=true");
       Runtime.getRuntime()
           .addShutdownHook(
@@ -197,7 +195,7 @@ public class TestHiveMetastore {
 
   public String getDatabasePath(String dbName) {
     File dbDir = new File(HIVE_LOCAL_DIR, dbName + ".db");
-    return dbDir.getPath();
+    return getCrossOSPath(dbDir);
   }
 
   public void reset() throws Exception {
@@ -263,7 +261,7 @@ public class TestHiveMetastore {
   private void initConf(HiveConf conf, int port) {
     conf.set(HiveConf.ConfVars.METASTOREURIS.varname, "thrift://localhost:" + port);
     conf.set(
-        HiveConf.ConfVars.METASTOREWAREHOUSE.varname, "file:" + HIVE_LOCAL_DIR.getAbsolutePath());
+        HiveConf.ConfVars.METASTOREWAREHOUSE.varname, "file:" + getCrossOSPath(HIVE_LOCAL_DIR));
     conf.set(HiveConf.ConfVars.METASTORE_TRY_DIRECT_SQL.varname, "false");
     conf.set(HiveConf.ConfVars.METASTORE_DISALLOW_INCOMPATIBLE_COL_TYPE_CHANGES.varname, "false");
     conf.set("iceberg.hive.client-pool-size", "2");
@@ -281,5 +279,14 @@ public class TestHiveMetastore {
     try (Reader reader = new InputStreamReader(inputStream)) {
       scriptRunner.runScript(reader);
     }
+  }
+
+  private static String getCrossOSPath(File file) {
+    String absolutePath = file.getAbsolutePath();
+    // Handle windows
+    if (absolutePath.contains(":\\")) {
+      absolutePath = "/" + absolutePath;
+    }
+    return StringUtils.replace(absolutePath, "\\", "/");
   }
 }

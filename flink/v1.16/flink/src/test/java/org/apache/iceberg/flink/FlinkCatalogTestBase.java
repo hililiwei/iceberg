@@ -31,6 +31,7 @@ import org.apache.iceberg.hadoop.HadoopCatalog;
 import org.apache.iceberg.relocated.com.google.common.base.Joiner;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.iceberg.relocated.com.google.common.collect.Maps;
+import org.apache.iceberg.util.TestPathUtil;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -92,7 +93,7 @@ public abstract class FlinkCatalogTestBase extends FlinkTestBase {
     this.isHadoopCatalog = catalogName.startsWith("testhadoop");
     this.validationCatalog =
         isHadoopCatalog
-            ? new HadoopCatalog(hiveConf, "file:" + hadoopWarehouse.getRoot())
+            ? new HadoopCatalog(hiveConf, "file:" + getCrossOSPath(hadoopWarehouse.getRoot()))
             : catalog;
     this.validationNamespaceCatalog = (SupportsNamespaces) validationCatalog;
 
@@ -115,9 +116,9 @@ public abstract class FlinkCatalogTestBase extends FlinkTestBase {
 
   protected String warehouseRoot() {
     if (isHadoopCatalog) {
-      return hadoopWarehouse.getRoot().getAbsolutePath();
+      return TestPathUtil.getCrossOSPath(hadoopWarehouse.getRoot());
     } else {
-      return hiveWarehouse.getRoot().getAbsolutePath();
+      return TestPathUtil.getCrossOSPath(hiveWarehouse.getRoot());
     }
   }
 

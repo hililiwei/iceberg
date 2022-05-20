@@ -34,6 +34,7 @@ import org.apache.iceberg.flink.TestFixtures;
 import org.apache.iceberg.flink.source.split.IcebergSourceSplit;
 import org.apache.iceberg.hadoop.HadoopCatalog;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
+import org.apache.iceberg.util.TestPathUtil;
 import org.apache.iceberg.util.ThreadPools;
 import org.junit.Assert;
 import org.junit.rules.TemporaryFolder;
@@ -59,7 +60,7 @@ public class SplitHelpers {
       TemporaryFolder temporaryFolder, int fileCount, int filesPerSplit) throws Exception {
     final File warehouseFile = temporaryFolder.newFolder();
     Assert.assertTrue(warehouseFile.delete());
-    final String warehouse = "file:" + warehouseFile;
+    final String warehouse = "file:" + TestPathUtil.getCrossOSPath(warehouseFile);
     Configuration hadoopConf = new Configuration();
     final HadoopCatalog catalog = new HadoopCatalog(hadoopConf, warehouse);
     try {

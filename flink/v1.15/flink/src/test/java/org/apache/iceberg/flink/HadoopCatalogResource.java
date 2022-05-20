@@ -21,6 +21,7 @@ package org.apache.iceberg.flink;
 import java.io.File;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.iceberg.hadoop.HadoopCatalog;
+import org.apache.iceberg.util.TestPathUtil;
 import org.junit.Assert;
 import org.junit.rules.ExternalResource;
 import org.junit.rules.TemporaryFolder;
@@ -46,7 +47,7 @@ public class HadoopCatalogResource extends ExternalResource {
     File warehouseFile = temporaryFolder.newFolder();
     Assert.assertTrue(warehouseFile.delete());
     // before variables
-    this.warehouse = "file:" + warehouseFile;
+    this.warehouse = this.warehouse = "file:" + TestPathUtil.getCrossOSPath(warehouseFile);
     Configuration hadoopConf = new Configuration();
     this.catalog = new HadoopCatalog(hadoopConf, warehouse);
     this.location = String.format("%s/%s/%s", warehouse, database, tableName);

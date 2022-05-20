@@ -21,6 +21,7 @@ package org.apache.iceberg.spark;
 import java.io.File;
 import java.io.IOException;
 import java.util.Map;
+import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.iceberg.catalog.Catalog;
@@ -73,7 +74,7 @@ public abstract class SparkTestBaseWithCatalog extends SparkTestBase {
     this.catalogName = catalogName;
     this.validationCatalog =
         catalogName.equals("testhadoop")
-            ? new HadoopCatalog(spark.sessionState().newHadoopConf(), "file:" + warehouse)
+            ? new HadoopCatalog(spark.sessionState().newHadoopConf(), "file:" + getCrossOSPath(warehouse))
             : catalog;
     this.validationNamespaceCatalog = (SupportsNamespaces) validationCatalog;
 
@@ -82,7 +83,7 @@ public abstract class SparkTestBaseWithCatalog extends SparkTestBase {
         (key, value) -> spark.conf().set("spark.sql.catalog." + catalogName + "." + key, value));
 
     if (config.get("type").equalsIgnoreCase("hadoop")) {
-      spark.conf().set("spark.sql.catalog." + catalogName + ".warehouse", "file:" + warehouse);
+      spark.conf().set("spark.sql.catalog." + catalogName + ".warehouse", "file:" + getCrossOSPath(warehouse));
     }
 
     this.tableName =
@@ -93,5 +94,14 @@ public abstract class SparkTestBaseWithCatalog extends SparkTestBase {
 
   protected String tableName(String name) {
     return (catalogName.equals("spark_catalog") ? "" : catalogName + ".") + "default." + name;
+  }
+
+  public static String getCrossOSPath(File file) {
+    String absolutePath = file.getAbsolutePath();
+    // Handle windows
+    if (absolutePath.contains(":\\")) {
+      absolutePath = "/" + absolutePath;
+    }
+    return StringUtils.replace(absolutePath, "\\", "/");
   }
 }

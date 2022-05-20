@@ -110,6 +110,7 @@ public class GlueCatalog extends BaseMetastoreCatalog
 
   @Override
   public void initialize(String name, Map<String, String> properties) {
+    this.catalogProperties = ImmutableMap.copyOf(properties);
     AwsClientFactory awsClientFactory;
     FileIO catalogFileIO;
     if (PropertyUtil.propertyAsBoolean(
@@ -160,6 +161,19 @@ public class GlueCatalog extends BaseMetastoreCatalog
     } else {
       return CatalogUtil.loadFileIO(fileIOImpl, properties, hadoopConf);
     }
+  }
+
+  @VisibleForTesting
+  void initialize(
+      String name,
+      String path,
+      AwsProperties properties,
+      GlueClient client,
+      LockManager lock,
+      FileIO io,
+      Map<String, String> catalogProps) {
+    this.catalogProperties = catalogProps;
+    initialize(name, path, properties, client, lock, io);
   }
 
   @VisibleForTesting
@@ -494,5 +508,10 @@ public class GlueCatalog extends BaseMetastoreCatalog
   @Override
   public void setConf(Configuration conf) {
     this.hadoopConf = conf;
+  }
+
+  @Override
+  protected Map<String, String> properties() {
+    return catalogProperties == null ? ImmutableMap.of() : catalogProperties;
   }
 }

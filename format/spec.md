@@ -446,6 +446,7 @@ Notes:
 1. Single-value serialization for lower and upper bounds is detailed in Appendix D.
 2. For `float` and `double`, the value `-0.0` must precede `+0.0`, as in the IEEE 754 `totalOrder` predicate. NaNs are not permitted as lower or upper bounds.
 3. If sort order ID is missing or unknown, then the order is assumed to be unsorted. Only data files and equality delete files should be written with a non-null order id. [Position deletes](#position-delete-files) are required to be sorted by file and position, not a table order, and should set sort order id to null. Readers must ignore sort order id for position delete files.
+4. The following field ids are reserved on `data_file`: 141.
 
 The `partition` struct stores the tuple of partition values for each file. Its type is derived from the partition fields of the partition spec used to write the manifest file. In v2, the partition struct's field ids must match the ids from the partition spec.
 
@@ -528,7 +529,7 @@ Manifest list files store `manifest_file`, a struct with the following fields:
 | v1         | v2         | Field id, name                 | Type                                        | Description |
 | ---------- | ---------- |--------------------------------|---------------------------------------------|-------------|
 | _required_ | _required_ | **`500 manifest_path`**        | `string`                                    | Location of the manifest file |
-| _required_ | _required_ | **`501 manifest_length`**      | `long`                                      | Length of the manifest file |
+| _required_ | _required_ | **`501 manifest_length`**      | `long`                                      | Length of the manifest file in bytes |
 | _required_ | _required_ | **`502 partition_spec_id`**    | `int`                                       | ID of a partition spec used to write the manifest; must be listed in table metadata `partition-specs` |
 |            | _required_ | **`517 content`**              | `int` with meaning: `0: data`, `1: deletes` | The type of files tracked by the manifest, either data or delete files; 0 for all v1 manifests |
 |            | _required_ | **`515 sequence_number`**      | `long`                                      | The sequence number when the manifest was added to the table; use 0 when reading v1 manifest lists |
@@ -1011,7 +1012,7 @@ Each partition field in the fields list is stored as an object. See the table fo
 |Transform or Field|JSON representation|Example|
 |--- |--- |--- |
 |**`identity`**|`JSON string: "identity"`|`"identity"`|
-|**`bucket[N]`**|`JSON string: "bucket<N>]"`|`"bucket[16]"`|
+|**`bucket[N]`**|`JSON string: "bucket[<N>]"`|`"bucket[16]"`|
 |**`truncate[W]`**|`JSON string: "truncate[<W>]"`|`"truncate[20]"`|
 |**`year`**|`JSON string: "year"`|`"year"`|
 |**`month`**|`JSON string: "month"`|`"month"`|

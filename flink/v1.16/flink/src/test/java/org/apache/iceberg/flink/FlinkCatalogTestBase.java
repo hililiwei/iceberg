@@ -92,7 +92,7 @@ public abstract class FlinkCatalogTestBase extends FlinkTestBase {
     this.isHadoopCatalog = catalogName.startsWith("testhadoop");
     this.validationCatalog =
         isHadoopCatalog
-            ? new HadoopCatalog(hiveConf, "file:" + hadoopWarehouse.getRoot())
+            ? new HadoopCatalog(hiveConf, "file:" + getCrossOSPath(hadoopWarehouse.getRoot()))
             : catalog;
     this.validationNamespaceCatalog = (SupportsNamespaces) validationCatalog;
 

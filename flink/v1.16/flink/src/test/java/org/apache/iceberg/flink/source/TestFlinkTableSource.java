@@ -71,7 +71,7 @@ public class TestFlinkTableSource extends FlinkTestBase {
     File warehouseFile = TEMPORARY_FOLDER.newFolder();
     Assert.assertTrue("The warehouse should be deleted", warehouseFile.delete());
     // before variables
-    warehouse = "file:" + warehouseFile;
+    warehouse = "file:" + getCrossOSPath(warehouseFile);
   }
 
   @Before
@@ -86,7 +86,7 @@ public class TestFlinkTableSource extends FlinkTestBase {
         "CREATE TABLE %s (id INT, data VARCHAR,d DOUBLE) WITH ('write.format.default'='%s')",
         TABLE_NAME, format.name());
     sql(
-        "INSERT INTO %s VALUES (1,'iceberg',10),(2,'b',20),(3,CAST(NULL AS VARCHAR),30)",
+        "INSERT INTO %s VALUES (1,'iceberg',10),(2,'b',20),(3,CAST(NULL AS VARCHAR),30),(4,'d',CAST('NaN' AS DOUBLE))",
         TABLE_NAME);
 
     this.scanEventCount = 0;
@@ -603,7 +603,49 @@ public class TestFlinkTableSource extends FlinkTestBase {
   }
 
   @Test
-  public void testSqlParseNaN() {
-    // todo add some test case to test NaN
+  public void testSqlParseError() {
+    String sqlParseErrorEqual =
+        String.format("SELECT * FROM %s WHERE d <> CAST('NaN' AS DOUBLE) ", TABLE_NAME);
+    List<Row> sql = sql(sqlParseErrorEqual);
+    System.out.println(sql);
+    AssertHelpers.assertThrows(
+        "The NaN is not supported by flink now. ",
+        NumberFormatException.class,
+        () -> sql(sqlParseErrorEqual));
+
+    String sqlParseErrorNotEqual =
+        String.format("SELECT * FROM %s WHERE d <> CAST('NaN' AS DOUBLE) ", TABLE_NAME);
+    AssertHelpers.assertThrows(
+        "The NaN is not supported by flink now. ",
+        NumberFormatException.class,
+        () -> sql(sqlParseErrorNotEqual));
+
+    String sqlParseErrorGT =
+        String.format("SELECT * FROM %s WHERE d > CAST('NaN' AS DOUBLE) ", TABLE_NAME);
+    AssertHelpers.assertThrows(
+        "The NaN is not supported by flink now. ",
+        NumberFormatException.class,
+        () -> sql(sqlParseErrorGT));
+
+    String sqlParseErrorLT =
+        String.format("SELECT * FROM %s WHERE d < CAST('NaN' AS DOUBLE) ", TABLE_NAME);
+    AssertHelpers.assertThrows(
+        "The NaN is not supported by flink now. ",
+        NumberFormatException.class,
+        () -> sql(sqlParseErrorLT));
+
+    String sqlParseErrorGTE =
+        String.format("SELECT * FROM %s WHERE d >= CAST('NaN' AS DOUBLE) ", TABLE_NAME);
+    AssertHelpers.assertThrows(
+        "The NaN is not supported by flink now. ",
+        NumberFormatException.class,
+        () -> sql(sqlParseErrorGTE));
+
+    String sqlParseErrorLTE =
+        String.format("SELECT * FROM %s WHERE d <= CAST('NaN' AS DOUBLE) ", TABLE_NAME);
+    AssertHelpers.assertThrows(
+        "The NaN is not supported by flink now. ",
+        NumberFormatException.class,
+        () -> sql(sqlParseErrorLTE));
   }
 }

@@ -31,6 +31,7 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.api.config.ExecutionConfigOptions;
+import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.data.RowData;
 import org.apache.hadoop.fs.Path;
 import org.apache.iceberg.Schema;
@@ -84,6 +85,7 @@ public class FlinkSource {
     private Table table;
     private TableLoader tableLoader;
     private TableSchema projectedSchema;
+    private ResolvedSchema projectedResolvedSchema;
     private ReadableConfig readableConfig = new Configuration();
     private final ScanContext.Builder contextBuilder = ScanContext.builder();
     private Boolean exposeLocality;
@@ -110,6 +112,11 @@ public class FlinkSource {
 
     public Builder project(TableSchema schema) {
       this.projectedSchema = schema;
+      return this;
+    }
+
+    public Builder project(ResolvedSchema schema) {
+      this.projectedResolvedSchema = schema;
       return this;
     }
 
@@ -206,8 +213,10 @@ public class FlinkSource {
         encryption = table.encryption();
       }
 
-      if (projectedSchema == null) {
+      if (projectedSchema == null && projectedResolvedSchema == null) {
         contextBuilder.project(icebergSchema);
+      } else if (projectedResolvedSchema != null) {
+        contextBuilder.project(FlinkSchemaUtil.convert(icebergSchema, projectedResolvedSchema));
       } else {
         contextBuilder.project(FlinkSchemaUtil.convert(icebergSchema, projectedSchema));
       }

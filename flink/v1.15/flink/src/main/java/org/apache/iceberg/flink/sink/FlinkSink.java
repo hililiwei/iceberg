@@ -36,6 +36,7 @@ import org.apache.flink.streaming.api.datastream.DataStreamSink;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.functions.sink.DiscardingSink;
 import org.apache.flink.table.api.TableSchema;
+import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.util.DataFormatConverters;
 import org.apache.flink.table.types.DataType;
@@ -132,6 +133,7 @@ public class FlinkSink {
     private TableLoader tableLoader;
     private Table table;
     private TableSchema tableSchema;
+    private ResolvedSchema resolvedTableSchema;
     private boolean overwrite = false;
     private DistributionMode distributionMode = null;
     private Integer writeParallelism = null;
@@ -193,6 +195,11 @@ public class FlinkSink {
 
     public Builder tableSchema(TableSchema newTableSchema) {
       this.tableSchema = newTableSchema;
+      return this;
+    }
+
+    public Builder tableSchema(ResolvedSchema newTableSchema) {
+      this.resolvedTableSchema = newTableSchema;
       return this;
     }
 
@@ -312,7 +319,7 @@ public class FlinkSink {
       List<Integer> equalityFieldIds = checkAndGetEqualityFieldIds();
 
       // Convert the requested flink table schema to flink row type.
-      RowType flinkRowType = toFlinkRowType(table.schema(), tableSchema);
+      RowType flinkRowType = toFlinkRowType(table.schema(), tableSchema, resolvedTableSchema);
 
       // Distribute the records from input data stream based on the write.distribution-mode and equality fields.
       DataStream<RowData> distributeStream = distributeDataStream(
@@ -495,19 +502,27 @@ public class FlinkSink {
   }
 
   static RowType toFlinkRowType(Schema schema, TableSchema requestedSchema) {
-    if (requestedSchema != null) {
+    return toFlinkRowType(schema, requestedSchema, null);
+  }
+
+  static RowType toFlinkRowType(Schema schema, TableSchema tableSchema, ResolvedSchema resolvedTableSchema) {
+    if (resolvedTableSchema != null) {
       // Convert the flink schema to iceberg schema firstly, then reassign ids to match the existing iceberg schema.
-      Schema writeSchema = TypeUtil.reassignIds(FlinkSchemaUtil.convert(requestedSchema), schema);
+      Schema writeSchema = TypeUtil.reassignIds(FlinkSchemaUtil.convert(resolvedTableSchema), schema);
       TypeUtil.validateWriteSchema(schema, writeSchema, true, true);
 
       // We use this flink schema to read values from RowData. The flink's TINYINT and SMALLINT will be promoted to
       // iceberg INTEGER, that means if we use iceberg's table schema to read TINYINT (backend by 1 'byte'), we will
       // read 4 bytes rather than 1 byte, it will mess up the byte array in BinaryRowData. So here we must use flink
       // schema.
-      return (RowType) requestedSchema.toRowDataType().getLogicalType();
-    } else {
-      return FlinkSchemaUtil.convert(schema);
+      return (RowType) resolvedTableSchema.toPhysicalRowDataType().getLogicalType();
+    } else if (tableSchema != null) {
+      Schema writeSchema = TypeUtil.reassignIds(FlinkSchemaUtil.convert(tableSchema), schema);
+      TypeUtil.validateWriteSchema(schema, writeSchema, true, true);
+
+      return (RowType) tableSchema.toRowDataType().getLogicalType();
     }
+    return FlinkSchemaUtil.convert(schema);
   }
 
   static IcebergStreamWriter<RowData> createStreamWriter(Table table,

@@ -28,7 +28,10 @@ import java.util.function.Consumer;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.iceberg.AssertHelpers;
 import org.apache.iceberg.CatalogProperties;
+import org.apache.iceberg.catalog.Catalog;
 import org.apache.iceberg.catalog.CatalogTests;
+import org.apache.iceberg.catalog.SessionCatalog;
+import org.apache.iceberg.catalog.SupportsNamespaces;
 import org.apache.iceberg.jdbc.JdbcCatalog;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableMap;
 import org.apache.iceberg.rest.responses.ConfigResponse;
@@ -40,14 +43,16 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-public class TestRESTCatalog extends CatalogTests<RESTCatalog> {
+public class TestRESTCatalog<T extends Catalog & SupportsNamespaces> extends CatalogTests<T> {
   @TempDir
   public Path temp;
 
-  private RESTCatalog restCatalog;
+  private RESTSessionCatalog sessionCatalog;
+  private T restCatalog;
   private JdbcCatalog backendCatalog;
 
   @BeforeEach
+  @SuppressWarnings("unchecked")
   public void createCatalog() {
     File warehouse = temp.toFile();
     Configuration conf = new Configuration();
@@ -68,27 +73,22 @@ public class TestRESTCatalog extends CatalogTests<RESTCatalog> {
       public <T extends RESTResponse> T execute(RESTCatalogAdapter.HTTPMethod method, String path, Object body,
                                                 Class<T> responseType, Map<String, String> headers,
                                                 Consumer<ErrorResponse> errorHandler) {
-        Assertions.assertEquals(headers, testHeaders, "Should pass headers through");
+        Assertions.assertEquals(testHeaders, headers, "Should pass headers through");
         return super.execute(method, path, body, responseType, headers, errorHandler);
       }
     };
 
-    this.restCatalog = new RESTCatalog((config) -> adaptor) {
-      @Override
-      protected Map<String, String> headers() {
-        return testHeaders;
-      }
-    };
+    this.sessionCatalog = new RESTSessionCatalog((config) -> adaptor);
+    sessionCatalog.setConf(conf);
+    sessionCatalog.initialize("prod", ImmutableMap.of(CatalogProperties.URI, "ignored", "header.header", "value"));
 
-    restCatalog.setConf(conf);
-
-    restCatalog.initialize("prod", ImmutableMap.of(CatalogProperties.URI, "ignored"));
+    this.restCatalog = (T) sessionCatalog.asCatalog(SessionCatalog.SessionContext.createEmpty());
   }
 
   @AfterEach
   public void closeCatalog() throws IOException {
     if (restCatalog != null) {
-      restCatalog.close();
+      sessionCatalog.close();
     }
 
     if (backendCatalog != null) {
@@ -97,7 +97,7 @@ public class TestRESTCatalog extends CatalogTests<RESTCatalog> {
   }
 
   @Override
-  protected RESTCatalog catalog() {
+  protected T catalog() {
     return restCatalog;
   }
 
@@ -115,46 +115,22 @@ public class TestRESTCatalog extends CatalogTests<RESTCatalog> {
 
   @Test
   public void testConfigRoute() throws IOException {
-    RESTClient testClient = new RESTClient() {
-      @Override
-      public void head(String path, Map<String, String> headers, Consumer<ErrorResponse> errorHandler) {
-        throw new UnsupportedOperationException("Should not be called for testConfigRoute");
-      }
-
-      @Override
-      public <T extends RESTResponse> T delete(String path, Class<T> responseType, Map<String, String> headers,
-                                               Consumer<ErrorResponse> errorHandler) {
-        throw new UnsupportedOperationException("Should not be called for testConfigRoute");
-      }
-
+    RESTCatalogAdapter adaptor = new RESTCatalogAdapter(backendCatalog) {
       @Override
       public <T extends RESTResponse> T get(String path, Class<T> responseType, Map<String, String> headers,
                                             Consumer<ErrorResponse> errorHandler) {
-        return (T) ConfigResponse
-            .builder()
-            .withDefaults(ImmutableMap.of(CatalogProperties.CLIENT_POOL_SIZE, "1"))
-            .withOverrides(ImmutableMap.of(CatalogProperties.CACHE_ENABLED, "false"))
-            .build();
-      }
-
-      @Override
-      public <T extends RESTResponse> T post(String path, RESTRequest body, Class<T> responseType,
-                                             Map<String, String> headers, Consumer<ErrorResponse> errorHandler) {
-        throw new UnsupportedOperationException("Should not be called for testConfigRoute");
-      }
-
-      @Override
-      public <T extends RESTResponse> T postForm(String path, Map<String, String> formData, Class<T> responseType,
-                                                 Map<String, String> headers, Consumer<ErrorResponse> errorHandler) {
-        throw new UnsupportedOperationException("Should not be called for testConfigRoute");
-      }
-
-      @Override
-      public void close() {
+        if (ResourcePaths.config().equals(path)) {
+          return castResponse(responseType, ConfigResponse
+              .builder()
+              .withDefaults(ImmutableMap.of(CatalogProperties.CLIENT_POOL_SIZE, "1"))
+              .withOverrides(ImmutableMap.of(CatalogProperties.CACHE_ENABLED, "false"))
+              .build());
+        }
+        return super.get(path, responseType, headers, errorHandler);
       }
     };
 
-    RESTCatalog restCat = new RESTCatalog((config) -> testClient);
+    RESTSessionCatalog restCat = new RESTSessionCatalog((config) -> adaptor);
     Map<String, String> initialConfig = ImmutableMap.of(
         CatalogProperties.URI, "http://localhost:8080",
         CatalogProperties.CACHE_ENABLED, "true");
@@ -172,7 +148,7 @@ public class TestRESTCatalog extends CatalogTests<RESTCatalog> {
 
   @Test
   public void testInitializeWithBadArguments() throws IOException {
-    RESTCatalog restCat = new RESTCatalog();
+    RESTSessionCatalog restCat = new RESTSessionCatalog();
     AssertHelpers.assertThrows("Configuration passed to initialize cannot be null",
         IllegalArgumentException.class,
         "Invalid configuration: null",

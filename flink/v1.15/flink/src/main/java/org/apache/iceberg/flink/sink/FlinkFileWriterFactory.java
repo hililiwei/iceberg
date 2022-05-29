@@ -45,7 +45,7 @@ import static org.apache.iceberg.TableProperties.DEFAULT_FILE_FORMAT;
 import static org.apache.iceberg.TableProperties.DEFAULT_FILE_FORMAT_DEFAULT;
 import static org.apache.iceberg.TableProperties.DELETE_DEFAULT_FILE_FORMAT;
 
-class FlinkFileWriterFactory extends BaseFileWriterFactory<RowData> implements Serializable {
+public class FlinkFileWriterFactory extends BaseFileWriterFactory<RowData> implements Serializable {
   private RowType dataFlinkType;
   private RowType equalityDeleteFlinkType;
   private RowType positionDeleteFlinkType;

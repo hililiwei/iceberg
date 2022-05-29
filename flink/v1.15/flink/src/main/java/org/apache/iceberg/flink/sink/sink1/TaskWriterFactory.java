@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.iceberg.flink.sink;
+package org.apache.iceberg.flink.sink.sink1;
 
 import java.io.Serializable;
 import org.apache.iceberg.io.TaskWriter;

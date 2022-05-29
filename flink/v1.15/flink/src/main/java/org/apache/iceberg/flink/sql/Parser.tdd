@@ -1,0 +1,12 @@
+ # List of additional classes and packages to import.
+  # Example. "org.apache.calcite.sql.*", "java.util.List".
+  # Please keep the import classes in alphabetical order if new class is added.
+  imports: [
+	...
+	"org.apache.iceberg.flink.sql.SqlRichExplain"
+ # List of methods for parsing custom SQL statements.
+  # Return type of method implementation should be 'SqlNode'.
+  # Example: SqlShowDatabases(), SqlShowTables().
+  statementParserMethods: [
+	...
+	"SqlRichExplain()"

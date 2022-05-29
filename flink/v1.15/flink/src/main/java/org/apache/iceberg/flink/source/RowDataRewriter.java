@@ -38,7 +38,7 @@ import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.encryption.EncryptionManager;
 import org.apache.iceberg.flink.FlinkSchemaUtil;
 import org.apache.iceberg.flink.sink.RowDataTaskWriterFactory;
-import org.apache.iceberg.flink.sink.TaskWriterFactory;
+import org.apache.iceberg.flink.sink.sink1.TaskWriterFactory;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.TaskWriter;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;

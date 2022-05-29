@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.iceberg.flink.sink;
+package org.apache.iceberg.flink.sink.sink1;
 
 import java.io.File;
 import java.io.IOException;
@@ -63,6 +63,9 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
+
+import static org.apache.iceberg.flink.sink.FlinkSinkCommon.toFlinkRowType;
+import static org.apache.iceberg.flink.sink.sink1.FlinkSink.Builder.createStreamWriter;
 
 @RunWith(Parameterized.class)
 public class TestIcebergStreamWriter {
@@ -332,8 +335,8 @@ public class TestIcebergStreamWriter {
 
   private OneInputStreamOperatorTestHarness<RowData, WriteResult> createIcebergStreamWriter(
       Table icebergTable, TableSchema flinkSchema) throws Exception {
-    RowType flinkRowType = FlinkSink.toFlinkRowType(icebergTable.schema(), flinkSchema);
-    IcebergStreamWriter<RowData> streamWriter = FlinkSink.createStreamWriter(icebergTable, flinkRowType, null, false);
+    RowType flinkRowType = toFlinkRowType(icebergTable.schema(), flinkSchema);
+    IcebergStreamWriter<RowData> streamWriter = createStreamWriter(icebergTable, flinkRowType, null, false);
     OneInputStreamOperatorTestHarness<RowData, WriteResult> harness = new OneInputStreamOperatorTestHarness<>(
         streamWriter, 1, 1, 0);
 

@@ -17,9 +17,8 @@
  * under the License.
  */
 
-package org.apache.iceberg.flink.sink;
+package org.apache.iceberg.flink.sink.sink1;
 
-import java.io.IOException;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.BoundedOneInput;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
@@ -28,6 +27,8 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.iceberg.io.TaskWriter;
 import org.apache.iceberg.io.WriteResult;
 import org.apache.iceberg.relocated.com.google.common.base.MoreObjects;
+
+import java.io.IOException;
 
 class IcebergStreamWriter<T> extends AbstractStreamOperator<WriteResult>
     implements OneInputStreamOperator<T, WriteResult>, BoundedOneInput {
@@ -80,6 +81,8 @@ class IcebergStreamWriter<T> extends AbstractStreamOperator<WriteResult>
       writer = null;
     }
   }
+
+
 
   @Override
   public void endInput() throws IOException {

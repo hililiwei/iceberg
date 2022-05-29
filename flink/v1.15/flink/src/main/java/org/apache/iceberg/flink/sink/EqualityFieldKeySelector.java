@@ -34,7 +34,7 @@ import org.apache.iceberg.util.StructProjection;
  * Create a {@link KeySelector} to shuffle by equality fields, to ensure same equality fields record will be emitted to
  * same writer in order.
  */
-class EqualityFieldKeySelector implements KeySelector<RowData, Integer> {
+public class EqualityFieldKeySelector implements KeySelector<RowData, Integer> {
 
   private final Schema schema;
   private final RowType flinkSchema;
@@ -44,7 +44,7 @@ class EqualityFieldKeySelector implements KeySelector<RowData, Integer> {
   private transient StructProjection structProjection;
   private transient StructLikeWrapper structLikeWrapper;
 
-  EqualityFieldKeySelector(Schema schema, RowType flinkSchema, List<Integer> equalityFieldIds) {
+  public EqualityFieldKeySelector(Schema schema, RowType flinkSchema, List<Integer> equalityFieldIds) {
     this.schema = schema;
     this.flinkSchema = flinkSchema;
     this.deleteSchema = TypeUtil.select(schema, Sets.newHashSet(equalityFieldIds));

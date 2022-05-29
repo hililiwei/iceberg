@@ -84,7 +84,7 @@ public class RowDataTaskWriterFactory implements TaskWriterFactory<RowData> {
   }
 
   @Override
-  public void initialize(int taskId, int attemptId) {
+  public void initialize(int taskId, long attemptId) {
     this.outputFileFactory = OutputFileFactory.builderFor(table, taskId, attemptId).build();
   }
 

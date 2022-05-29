@@ -31,7 +31,7 @@ import org.apache.iceberg.flink.RowDataWrapper;
  * Create a {@link KeySelector} to shuffle by partition key, then each partition/bucket will be wrote by only one
  * task. That will reduce lots of small files in partitioned fanout write policy for {@link FlinkSink}.
  */
-class PartitionKeySelector implements KeySelector<RowData, String> {
+public class PartitionKeySelector implements KeySelector<RowData, String> {
 
   private final Schema schema;
   private final PartitionKey partitionKey;
@@ -39,7 +39,7 @@ class PartitionKeySelector implements KeySelector<RowData, String> {
 
   private transient RowDataWrapper rowDataWrapper;
 
-  PartitionKeySelector(PartitionSpec spec, Schema schema, RowType flinkSchema) {
+  public PartitionKeySelector(PartitionSpec spec, Schema schema, RowType flinkSchema) {
     this.schema = schema;
     this.partitionKey = new PartitionKey(spec, schema);
     this.flinkSchema = flinkSchema;

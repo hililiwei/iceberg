@@ -17,30 +17,27 @@
  * under the License.
  */
 
-package org.apache.iceberg.flink.sink;
+package org.apache.iceberg.flink.sink.v2;
 
 import java.io.Serializable;
-import org.apache.iceberg.io.TaskWriter;
+import java.util.List;
 
-/**
- * Factory to create {@link TaskWriter}
- *
- * @param <T> data type of record.
- */
-public interface TaskWriterFactory<T> extends Serializable {
+public class IcebergStreamWriterState implements Serializable {
 
-  /**
-   * Initialize the factory with a given taskId and attemptId.
-   *
-   * @param taskId    the identifier of task.
-   * @param attemptId the attempt id of this task.
-   */
-  void initialize(int taskId, long attemptId);
+  private final long checkpointId;
 
-  /**
-   * Initialize a {@link TaskWriter} with given task id and attempt id.
-   *
-   * @return a newly created task writer.
-   */
-  TaskWriter<T> create();
+  private List<IcebergFlinkCommittable> writeResults;
+
+  public IcebergStreamWriterState(long checkpointId, List<IcebergFlinkCommittable> writeResults) {
+    this.checkpointId = checkpointId;
+    this.writeResults = writeResults;
+  }
+
+  public List<IcebergFlinkCommittable> writeResults() {
+    return writeResults;
+  }
+
+  public void writeResults(List<IcebergFlinkCommittable> newWriteResults) {
+    this.writeResults = newWriteResults;
+  }
 }

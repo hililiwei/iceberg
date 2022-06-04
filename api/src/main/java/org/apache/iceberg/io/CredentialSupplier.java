@@ -17,40 +17,18 @@
  * under the License.
  */
 
-package org.apache.iceberg.expressions;
-
-import java.io.ObjectStreamException;
+package org.apache.iceberg.io;
 
 /**
- * An {@link Expression expression} that is always false.
+ * Interface used to expose credentials held by a FileIO instance.
+ * <p>
+ * Tables supply a FileIO instance to use for file access that is configured with the credentials needed to access the
+ * table's files. Systems that do not use FileIO can use this interface to get the configured credential as a string,
+ * and use the credential for file access via other IO libraries.
  */
-public class False implements Expression {
-  static final False INSTANCE = new False();
-
-  private False() {
-  }
-
-  @Override
-  public Operation op() {
-    return Operation.FALSE;
-  }
-
-  @Override
-  public Expression negate() {
-    return True.INSTANCE;
-  }
-
-  @Override
-  public boolean isEquivalentTo(Expression other) {
-    return other.op() == Operation.FALSE;
-  }
-
-  @Override
-  public String toString() {
-    return "false";
-  }
-
-  Object writeReplace() throws ObjectStreamException {
-    return new SerializationProxies.ConstantExpressionProxy(false);
-  }
+public interface CredentialSupplier {
+  /**
+   * @return the credential string
+   */
+  String getCredential();
 }

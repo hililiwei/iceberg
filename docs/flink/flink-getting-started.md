@@ -486,6 +486,9 @@ There are other options that we could set by Java API, please see the [FlinkSour
 
 Iceberg support writing to iceberg table from different DataStream input.
 
+{{< hint info >}}
+FLink streaming task commit snapshots along with Checkpoint. if Checkpoint is not enabled, the new data will never be visible.
+{{< /hint >}}
 
 ### Appending data.
 

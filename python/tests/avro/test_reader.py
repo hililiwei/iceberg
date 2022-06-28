@@ -14,6 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+# pylint:disable=protected-access
 import json
 
 import pytest
@@ -447,7 +448,7 @@ def test_binary_reader():
 
 def test_unknown_type():
     class UnknownType(PrimitiveType):
-        ...
+        __root__ = "UnknownType"
 
     with pytest.raises(ValueError) as exc_info:
         primitive_reader(UnknownType())

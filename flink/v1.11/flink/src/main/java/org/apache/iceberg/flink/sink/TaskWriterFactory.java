@@ -17,20 +17,30 @@
  * under the License.
  */
 
-def flinkVersions = (System.getProperty("flinkVersions") != null ? System.getProperty("flinkVersions") : System.getProperty("defaultFlinkVersions")).split(",")
+package org.apache.iceberg.flink.sink;
 
-if (flinkVersions.contains("1.11")) {
-  apply from: file("$projectDir/v1.11/build.gradle")
-}
+import java.io.Serializable;
+import org.apache.iceberg.io.TaskWriter;
 
-if (flinkVersions.contains("1.13")) {
-  apply from: file("$projectDir/v1.13/build.gradle")
-}
+/**
+ * Factory to create {@link TaskWriter}
+ *
+ * @param <T> data type of record.
+ */
+public interface TaskWriterFactory<T> extends Serializable {
 
-if (flinkVersions.contains("1.14")) {
-  apply from: file("$projectDir/v1.14/build.gradle")
-}
+  /**
+   * Initialize the factory with a given taskId and attemptId.
+   *
+   * @param taskId    the identifier of task.
+   * @param attemptId the attempt id of this task.
+   */
+  void initialize(int taskId, int attemptId);
 
-if (flinkVersions.contains("1.15")) {
-  apply from: file("$projectDir/v1.15/build.gradle")
+  /**
+   * Initialize a {@link TaskWriter} with given task id and attempt id.
+   *
+   * @return a newly created task writer.
+   */
+  TaskWriter<T> create();
 }

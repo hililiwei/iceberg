@@ -28,6 +28,8 @@
     <suppress files="[/\\].*[/\\]generated.*[/\\]" checks="." />
 
     <suppress files="org.apache.iceberg.hive.ScriptRunner.java" checks="RegexpHeader"/>
+    <suppress files="org.apache.flink.table.connector.sink.DataStreamSinkProvider.java" checks="RegexpHeader"/>
+    <suppress files="org.apache.flink.table.connector.source.DataStreamScanProvider.java" checks="RegexpHeader"/>
 
     <!-- Referencing guava classes should be allowed in classes within bundled-guava module -->
     <suppress files="org.apache.iceberg.GuavaClasses" id="BanUnrelocatedGuavaClasses"/>

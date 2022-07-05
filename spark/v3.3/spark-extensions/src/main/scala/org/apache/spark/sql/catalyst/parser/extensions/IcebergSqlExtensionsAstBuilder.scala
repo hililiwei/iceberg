@@ -37,6 +37,7 @@ import org.apache.spark.sql.catalyst.parser.extensions.IcebergSqlExtensionsParse
 import org.apache.spark.sql.catalyst.plans.logical.AddPartitionField
 import org.apache.spark.sql.catalyst.plans.logical.CallArgument
 import org.apache.spark.sql.catalyst.plans.logical.CallStatement
+import org.apache.spark.sql.catalyst.plans.logical.CreateBranch
 import org.apache.spark.sql.catalyst.plans.logical.DropIdentifierFields
 import org.apache.spark.sql.catalyst.plans.logical.DropPartitionField
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
@@ -77,6 +78,18 @@ class IcebergSqlExtensionsAstBuilder(delegate: ParserInterface) extends IcebergS
       typedVisit[Seq[String]](ctx.multipartIdentifier),
       typedVisit[Transform](ctx.transform),
       Option(ctx.name).map(_.getText))
+  }
+
+  /**
+   * {@inheritDoc  }
+   *
+   * <p>The default implementation returns the result of calling
+   * {@link #   visitChildren} on {@code ctx}.</p>
+   */
+  override def visitCreateBranch(ctx: CreateBranchContext): CreateBranch = withOrigin(ctx) {
+    CreateBranch(
+      typedVisit[Seq[String]](ctx.multipartIdentifier),
+      typedVisit[String](ctx.brandname().BRANCH_IDENTIFIER()))
   }
 
   /**
@@ -215,6 +228,17 @@ class IcebergSqlExtensionsAstBuilder(delegate: ParserInterface) extends IcebergS
    */
   override def visitMultipartIdentifier(ctx: MultipartIdentifierContext): Seq[String] = withOrigin(ctx) {
     toSeq(ctx.parts).map(_.getText)
+  }
+
+
+  /**
+   * {@inheritDoc  }
+   *
+   * <p>The default implementation returns the result of calling
+   * {@link #   visitChildren} on {@code ctx}.</p>
+   */
+  override def visitBrandname(ctx: BrandnameContext): String = withOrigin(ctx) {
+    ctx.BRANCH_IDENTIFIER().getText
   }
 
   /**

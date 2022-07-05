@@ -73,6 +73,7 @@ statement
     | ALTER TABLE multipartIdentifier WRITE writeSpec                                       #setWriteDistributionAndOrdering
     | ALTER TABLE multipartIdentifier SET IDENTIFIER_KW FIELDS fieldList                    #setIdentifierFields
     | ALTER TABLE multipartIdentifier DROP IDENTIFIER_KW FIELDS fieldList                   #dropIdentifierFields
+    | ALTER TABLE multipartIdentifier CREATE BRANCH brandname                               #createBranch
     ;
 
 writeSpec
@@ -155,6 +156,12 @@ identifier
     | nonReserved             #unquotedIdentifier
     ;
 
+brandname
+    : BRANCH_IDENTIFIER
+    | quotedIdentifier
+    | nonReserved
+    ;
+
 quotedIdentifier
     : BACKQUOTED_IDENTIFIER
     ;
@@ -164,7 +171,7 @@ fieldList
     ;
 
 nonReserved
-    : ADD | ALTER | AS | ASC | BY | CALL | DESC | DROP | FIELD | FIRST | LAST | NULLS | ORDERED | PARTITION | TABLE | WRITE
+    : ADD | ALTER | AS | ASC | BY | CALL | CREATE | BRANCH | DESC | DROP | FIELD | FIRST | LAST | NULLS | ORDERED | PARTITION | TABLE | WRITE
     | DISTRIBUTED | LOCALLY | UNORDERED | REPLACE | WITH | IDENTIFIER_KW | FIELDS | SET
     | TRUE | FALSE
     | MAP
@@ -176,6 +183,8 @@ AS: 'AS';
 ASC: 'ASC';
 BY: 'BY';
 CALL: 'CALL';
+CREATE: 'CREATE';
+BRANCH: 'BRANCH';
 DESC: 'DESC';
 DISTRIBUTED: 'DISTRIBUTED';
 DROP: 'DROP';
@@ -206,6 +215,10 @@ MINUS: '-';
 STRING
     : '\'' ( ~('\''|'\\') | ('\\' .) )* '\''
     | '"' ( ~('"'|'\\') | ('\\' .) )* '"'
+    ;
+
+NAME_STR
+    : [a-zA-Z_][a-zA-Z_0-9]*
     ;
 
 BIGINT_LITERAL
@@ -250,6 +263,10 @@ BIGDECIMAL_LITERAL
 
 IDENTIFIER
     : (LETTER | DIGIT | '_')+
+    ;
+
+BRANCH_IDENTIFIER
+    : NAME_STR
     ;
 
 BACKQUOTED_IDENTIFIER

@@ -81,4 +81,10 @@ public class FlinkConfigOptions {
           .intType()
           .defaultValue(ThreadPools.WORKER_THREAD_POOL_SIZE)
           .withDescription("The size of workers pool used to plan or scan manifests.");
+
+  public static final ConfigOption<Boolean> TABLE_EXEC_ICEBERG_USE_FLIP143_SINK =
+      ConfigOptions.key("table.exec.iceberg.use-flip143-sink")
+          .booleanType()
+          .defaultValue(false)
+          .withDescription("Use the FLIP-143 based Iceberg sink implementation.");
 }

@@ -36,22 +36,16 @@ import org.apache.spark.sql.catalyst.parser.ParserInterface
 import org.apache.spark.sql.catalyst.parser.extensions.IcebergParserUtils.withOrigin
 import org.apache.spark.sql.catalyst.parser.extensions.IcebergSqlExtensionsParser._
 import org.apache.spark.sql.catalyst.plans.logical.AddPartitionField
-import org.apache.spark.sql.catalyst.plans.logical.AlterBranchRefRetention
-import org.apache.spark.sql.catalyst.plans.logical.AlterBranchSnapshotRetention
 import org.apache.spark.sql.catalyst.plans.logical.AlterTagRefRetention
 import org.apache.spark.sql.catalyst.plans.logical.CallArgument
 import org.apache.spark.sql.catalyst.plans.logical.CallStatement
-import org.apache.spark.sql.catalyst.plans.logical.CreateBranch
 import org.apache.spark.sql.catalyst.plans.logical.CreateTag
 import org.apache.spark.sql.catalyst.plans.logical.DropIdentifierFields
 import org.apache.spark.sql.catalyst.plans.logical.DropPartitionField
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.catalyst.plans.logical.NamedArgument
 import org.apache.spark.sql.catalyst.plans.logical.PositionalArgument
-import org.apache.spark.sql.catalyst.plans.logical.RemoveBranch
 import org.apache.spark.sql.catalyst.plans.logical.RemoveTag
-import org.apache.spark.sql.catalyst.plans.logical.RenameBranch
-import org.apache.spark.sql.catalyst.plans.logical.ReplaceBranch
 import org.apache.spark.sql.catalyst.plans.logical.ReplacePartitionField
 import org.apache.spark.sql.catalyst.plans.logical.ReplaceTag
 import org.apache.spark.sql.catalyst.plans.logical.SetIdentifierFields
@@ -88,79 +82,6 @@ class IcebergSqlExtensionsAstBuilder(delegate: ParserInterface) extends IcebergS
       typedVisit[Seq[String]](ctx.multipartIdentifier),
       typedVisit[Transform](ctx.transform),
       Option(ctx.name).map(_.getText))
-  }
-
-  /**
-   * Create an ADD BRANCH logical command.
-   */
-  override def visitCreateBranch(ctx: CreateBranchContext): CreateBranch = withOrigin(ctx) {
-    CreateBranch(
-      typedVisit[Seq[String]](ctx.multipartIdentifier),
-      ctx.identifier().getText,
-      Option(ctx.snapshotId()).map(_.getText.toLong),
-      Option(ctx.numSnapshots()).map(_.getText.toLong),
-      Option(ctx.snapshotRetain()).map(_.getText.toLong * timeUnit(ctx.snapshotRetainTimeUnit().getText)),
-      Option(ctx.snapshotRefRetain()).map(_.getText.toLong * timeUnit(ctx.snapshotRefRetainTimeUnit().getText))
-    )
-  }
-
-  /**
-   * Create an REPLACE BRANCH logical command.
-   */
-  override def visitReplaceBranch(ctx: ReplaceBranchContext): ReplaceBranch = withOrigin(ctx) {
-    ReplaceBranch(
-      typedVisit[Seq[String]](ctx.multipartIdentifier),
-      ctx.identifier().getText,
-      Option(ctx.snapshotId()).map(_.getText.toLong),
-      Option(ctx.numSnapshots()).map(_.getText.toLong),
-      Option(ctx.snapshotRetain()).map(_.getText.toLong * timeUnit(ctx.snapshotRetainTimeUnit().getText)),
-      Option(ctx.snapshotRefRetain()).map(_.getText.toLong * timeUnit(ctx.snapshotRefRetainTimeUnit().getText))
-    )
-  }
-
-  /**
-   * Create an REMOVE BRANCH logical command.
-   */
-  override def visitRemoveBranch(ctx: RemoveBranchContext): RemoveBranch = withOrigin(ctx) {
-    RemoveBranch(
-      typedVisit[Seq[String]](ctx.multipartIdentifier),
-      ctx.identifier().getText
-    )
-  }
-
-  /**
-   * Create an RENAME BRANCH logical command.
-   */
-  override def visitRenameBranch(ctx: RenameBranchContext): RenameBranch =  withOrigin(ctx) {
-    RenameBranch(
-      typedVisit[Seq[String]](ctx.multipartIdentifier()),
-      ctx.identifier().getText,
-      ctx.newIdentifier().getText)
-  }
-
-  /**
-   * Create an ALTER BRANCH RETENTION logical command.
-   */
-  override def visitAlterBranchRetention(ctx: AlterBranchRetentionContext): AlterBranchRefRetention = withOrigin(ctx) {
-    AlterBranchRefRetention(
-      typedVisit[Seq[String]](ctx.multipartIdentifier()),
-      ctx.identifier().getText,
-      Option(ctx.snapshotRefRetain()).map(_.getText.toLong * timeUnit(ctx.snapshotRefRetainTimeUnit().getText))
-    )
-  }
-
-  /**
-   * Create an ALTER BRANCH SNAPSHOT RETENTION logical command.
-   */
-  override def visitAlterBranchSnapshotRetention(
-                                                  ctx: AlterBranchSnapshotRetentionContext
-                                                ): AlterBranchSnapshotRetention = withOrigin(ctx) {
-    AlterBranchSnapshotRetention(
-      typedVisit[Seq[String]](ctx.multipartIdentifier()),
-      ctx.identifier().getText,
-      Option(ctx.numSnapshots()).map(_.getText.toLong),
-      Option(ctx.snapshotRetain()).map(_.getText.toLong * timeUnit(ctx.snapshotRetainTimeUnit().getText))
-    )
   }
 
   /**

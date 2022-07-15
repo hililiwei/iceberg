@@ -31,11 +31,9 @@ import org.apache.iceberg.ManifestFiles;
 import org.apache.iceberg.MetadataTableType;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.ReachableFileUtil;
-import org.apache.iceberg.SerializableTable;
 import org.apache.iceberg.StaticTableOperations;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableMetadata;
-import org.apache.iceberg.actions.Action;
 import org.apache.iceberg.io.CloseableIterator;
 import org.apache.iceberg.io.ClosingIterator;
 import org.apache.iceberg.io.FileIO;
@@ -45,6 +43,7 @@ import org.apache.iceberg.relocated.com.google.common.collect.Maps;
 import org.apache.iceberg.spark.JobGroupInfo;
 import org.apache.iceberg.spark.JobGroupUtils;
 import org.apache.iceberg.spark.SparkTableUtil;
+import org.apache.iceberg.spark.source.SerializableTableWithSize;
 import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.FlatMapFunction;
@@ -59,7 +58,7 @@ import static org.apache.iceberg.MetadataTableType.ALL_MANIFESTS;
 import static org.apache.spark.sql.functions.col;
 import static org.apache.spark.sql.functions.lit;
 
-abstract class BaseSparkAction<ThisT, R> implements Action<ThisT, R> {
+abstract class BaseSparkAction<ThisT> {
 
   protected static final String CONTENT_FILE = "Content File";
   protected static final String MANIFEST = "Manifest";
@@ -91,13 +90,11 @@ abstract class BaseSparkAction<ThisT, R> implements Action<ThisT, R> {
 
   protected abstract ThisT self();
 
-  @Override
   public ThisT option(String name, String value) {
     options.put(name, value);
     return self();
   }
 
-  @Override
   public ThisT options(Map<String, String> newOptions) {
     options.putAll(newOptions);
     return self();
@@ -130,7 +127,7 @@ abstract class BaseSparkAction<ThisT, R> implements Action<ThisT, R> {
 
   // builds a DF of delete and data file path and type by reading all manifests
   protected Dataset<Row> buildValidContentFileWithTypeDF(Table table) {
-    Broadcast<Table> tableBroadcast = sparkContext.broadcast(SerializableTable.copyOf(table));
+    Broadcast<Table> tableBroadcast = sparkContext.broadcast(SerializableTableWithSize.copyOf(table));
 
     Dataset<ManifestFileBean> allManifests = loadMetadataTable(table, ALL_MANIFESTS)
         .selectExpr(

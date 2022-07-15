@@ -49,7 +49,6 @@ import org.apache.iceberg.SortOrder;
 import org.apache.iceberg.StructLike;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableProperties;
-import org.apache.iceberg.actions.ActionsProvider;
 import org.apache.iceberg.actions.BinPackStrategy;
 import org.apache.iceberg.actions.RewriteDataFiles;
 import org.apache.iceberg.actions.RewriteDataFiles.Result;
@@ -79,7 +78,7 @@ import org.apache.iceberg.spark.FileRewriteCoordinator;
 import org.apache.iceberg.spark.FileScanTaskSetManager;
 import org.apache.iceberg.spark.SparkTableUtil;
 import org.apache.iceberg.spark.SparkTestBase;
-import org.apache.iceberg.spark.actions.BaseRewriteDataFilesSparkAction.RewriteExecutionContext;
+import org.apache.iceberg.spark.actions.RewriteDataFilesSparkAction.RewriteExecutionContext;
 import org.apache.iceberg.spark.source.ThreeColumnRecord;
 import org.apache.iceberg.types.Comparators;
 import org.apache.iceberg.types.Conversions;
@@ -133,10 +132,10 @@ public class TestRewriteDataFilesAction extends SparkTestBase {
     this.tableLocation = tableDir.toURI().toString();
   }
 
-  private RewriteDataFiles basicRewrite(Table table) {
+  private RewriteDataFilesSparkAction basicRewrite(Table table) {
     // Always compact regardless of input files
     table.refresh();
-    return actions().rewriteDataFiles(table, tableLocation).option(BinPackStrategy.MIN_INPUT_FILES, "1");
+    return actions().rewriteDataFiles(table).option(BinPackStrategy.MIN_INPUT_FILES, "1");
   }
 
   @Test
@@ -259,7 +258,7 @@ public class TestRewriteDataFilesAction extends SparkTestBase {
     rowDelta.commit();
     table.refresh();
     List<Object[]> expectedRecords = currentData();
-    Result result = actions().rewriteDataFiles(table, tableLocation)
+    Result result = actions().rewriteDataFiles(table)
         // do not include any file based on bin pack file size configs
         .option(BinPackStrategy.MIN_FILE_SIZE_BYTES, "0")
         .option(RewriteDataFiles.TARGET_FILE_SIZE_BYTES, Long.toString(Long.MAX_VALUE - 1))
@@ -293,7 +292,7 @@ public class TestRewriteDataFilesAction extends SparkTestBase {
     rowDelta.commit();
     table.refresh();
     List<Object[]> expectedRecords = currentData();
-    Result result = actions().rewriteDataFiles(table, tableLocation)
+    Result result = actions().rewriteDataFiles(table)
         .option(BinPackStrategy.DELETE_FILE_THRESHOLD, "1")
         .execute();
     Assert.assertEquals("Action should rewrite 1 data files", 1, result.rewrittenDataFilesCount());
@@ -574,12 +573,10 @@ public class TestRewriteDataFilesAction extends SparkTestBase {
 
     List<Object[]> originalData = currentData();
 
-    BaseRewriteDataFilesSparkAction realRewrite =
-        (org.apache.iceberg.spark.actions.BaseRewriteDataFilesSparkAction)
-            basicRewrite(table)
-                .option(RewriteDataFiles.MAX_FILE_GROUP_SIZE_BYTES, Integer.toString(fileSize * 2 + 1000));
+    RewriteDataFilesSparkAction realRewrite = basicRewrite(table)
+        .option(RewriteDataFiles.MAX_FILE_GROUP_SIZE_BYTES, Integer.toString(fileSize * 2 + 1000));
 
-    BaseRewriteDataFilesSparkAction spyRewrite = Mockito.spy(realRewrite);
+    RewriteDataFilesSparkAction spyRewrite = Mockito.spy(realRewrite);
 
     // Fail groups 1, 3, and 7 during rewrite
     GroupInfoMatcher failGroup = new GroupInfoMatcher(1, 3, 7);
@@ -607,12 +604,10 @@ public class TestRewriteDataFilesAction extends SparkTestBase {
 
     List<Object[]> originalData = currentData();
 
-    BaseRewriteDataFilesSparkAction realRewrite =
-        (org.apache.iceberg.spark.actions.BaseRewriteDataFilesSparkAction)
-            basicRewrite(table)
-                .option(RewriteDataFiles.MAX_FILE_GROUP_SIZE_BYTES, Integer.toString(fileSize * 2 + 1000));
+    RewriteDataFilesSparkAction realRewrite = basicRewrite(table)
+        .option(RewriteDataFiles.MAX_FILE_GROUP_SIZE_BYTES, Integer.toString(fileSize * 2 + 1000));
 
-    BaseRewriteDataFilesSparkAction spyRewrite = spy(realRewrite);
+    RewriteDataFilesSparkAction spyRewrite = spy(realRewrite);
     RewriteDataFilesCommitManager util = spy(new RewriteDataFilesCommitManager(table));
 
     // Fail to commit
@@ -644,13 +639,11 @@ public class TestRewriteDataFilesAction extends SparkTestBase {
 
     List<Object[]> originalData = currentData();
 
-    BaseRewriteDataFilesSparkAction realRewrite =
-        (org.apache.iceberg.spark.actions.BaseRewriteDataFilesSparkAction)
-            basicRewrite(table)
-                .option(RewriteDataFiles.MAX_FILE_GROUP_SIZE_BYTES, Integer.toString(fileSize * 2 + 1000))
-                .option(RewriteDataFiles.MAX_CONCURRENT_FILE_GROUP_REWRITES, "3");
+    RewriteDataFilesSparkAction realRewrite = basicRewrite(table)
+        .option(RewriteDataFiles.MAX_FILE_GROUP_SIZE_BYTES, Integer.toString(fileSize * 2 + 1000))
+        .option(RewriteDataFiles.MAX_CONCURRENT_FILE_GROUP_REWRITES, "3");
 
-    BaseRewriteDataFilesSparkAction spyRewrite = Mockito.spy(realRewrite);
+    RewriteDataFilesSparkAction spyRewrite = Mockito.spy(realRewrite);
 
     // Fail groups 1, 3, and 7 during rewrite
     GroupInfoMatcher failGroup = new GroupInfoMatcher(1, 3, 7);
@@ -678,14 +671,12 @@ public class TestRewriteDataFilesAction extends SparkTestBase {
 
     List<Object[]> originalData = currentData();
 
-    BaseRewriteDataFilesSparkAction realRewrite =
-        (org.apache.iceberg.spark.actions.BaseRewriteDataFilesSparkAction)
-            basicRewrite(table)
-                .option(RewriteDataFiles.MAX_FILE_GROUP_SIZE_BYTES, Integer.toString(fileSize * 2 + 1000))
-                .option(RewriteDataFiles.PARTIAL_PROGRESS_ENABLED, "true")
-                .option(RewriteDataFiles.PARTIAL_PROGRESS_MAX_COMMITS, "3");
+    RewriteDataFilesSparkAction realRewrite = basicRewrite(table)
+        .option(RewriteDataFiles.MAX_FILE_GROUP_SIZE_BYTES, Integer.toString(fileSize * 2 + 1000))
+        .option(RewriteDataFiles.PARTIAL_PROGRESS_ENABLED, "true")
+        .option(RewriteDataFiles.PARTIAL_PROGRESS_MAX_COMMITS, "3");
 
-    BaseRewriteDataFilesSparkAction spyRewrite = Mockito.spy(realRewrite);
+    RewriteDataFilesSparkAction spyRewrite = Mockito.spy(realRewrite);
 
     // Fail groups 1, 3, and 7 during rewrite
     GroupInfoMatcher failGroup = new GroupInfoMatcher(1, 3, 7);
@@ -716,15 +707,13 @@ public class TestRewriteDataFilesAction extends SparkTestBase {
 
     List<Object[]> originalData = currentData();
 
-    BaseRewriteDataFilesSparkAction realRewrite =
-        (org.apache.iceberg.spark.actions.BaseRewriteDataFilesSparkAction)
-            basicRewrite(table)
-                .option(RewriteDataFiles.MAX_FILE_GROUP_SIZE_BYTES, Integer.toString(fileSize * 2 + 1000))
-                .option(RewriteDataFiles.MAX_CONCURRENT_FILE_GROUP_REWRITES, "3")
-                .option(RewriteDataFiles.PARTIAL_PROGRESS_ENABLED, "true")
-                .option(RewriteDataFiles.PARTIAL_PROGRESS_MAX_COMMITS, "3");
+    RewriteDataFilesSparkAction realRewrite = basicRewrite(table)
+        .option(RewriteDataFiles.MAX_FILE_GROUP_SIZE_BYTES, Integer.toString(fileSize * 2 + 1000))
+        .option(RewriteDataFiles.MAX_CONCURRENT_FILE_GROUP_REWRITES, "3")
+        .option(RewriteDataFiles.PARTIAL_PROGRESS_ENABLED, "true")
+        .option(RewriteDataFiles.PARTIAL_PROGRESS_MAX_COMMITS, "3");
 
-    BaseRewriteDataFilesSparkAction spyRewrite = Mockito.spy(realRewrite);
+    RewriteDataFilesSparkAction spyRewrite = Mockito.spy(realRewrite);
 
     // Fail groups 1, 3, and 7 during rewrite
     GroupInfoMatcher failGroup = new GroupInfoMatcher(1, 3, 7);
@@ -755,15 +744,13 @@ public class TestRewriteDataFilesAction extends SparkTestBase {
 
     List<Object[]> originalData = currentData();
 
-    BaseRewriteDataFilesSparkAction realRewrite =
-        (org.apache.iceberg.spark.actions.BaseRewriteDataFilesSparkAction)
-            basicRewrite(table)
-                .option(RewriteDataFiles.MAX_FILE_GROUP_SIZE_BYTES, Integer.toString(fileSize * 2 + 1000))
-                .option(RewriteDataFiles.MAX_CONCURRENT_FILE_GROUP_REWRITES, "3")
-                .option(RewriteDataFiles.PARTIAL_PROGRESS_ENABLED, "true")
-                .option(RewriteDataFiles.PARTIAL_PROGRESS_MAX_COMMITS, "3");
+    RewriteDataFilesSparkAction realRewrite = basicRewrite(table)
+        .option(RewriteDataFiles.MAX_FILE_GROUP_SIZE_BYTES, Integer.toString(fileSize * 2 + 1000))
+        .option(RewriteDataFiles.MAX_CONCURRENT_FILE_GROUP_REWRITES, "3")
+        .option(RewriteDataFiles.PARTIAL_PROGRESS_ENABLED, "true")
+        .option(RewriteDataFiles.PARTIAL_PROGRESS_MAX_COMMITS, "3");
 
-    BaseRewriteDataFilesSparkAction spyRewrite = spy(realRewrite);
+    RewriteDataFilesSparkAction spyRewrite = spy(realRewrite);
     RewriteDataFilesCommitManager util = spy(new RewriteDataFilesCommitManager(table));
 
     // First and Third commits work, second does not
@@ -1017,8 +1004,8 @@ public class TestRewriteDataFilesAction extends SparkTestBase {
 
     List<Object[]> originalData = currentData();
 
-    BaseRewriteDataFilesSparkAction action = (BaseRewriteDataFilesSparkAction) basicRewrite(table);
-    BaseRewriteDataFilesSparkAction spyAction = spy(action);
+    RewriteDataFilesSparkAction action = basicRewrite(table);
+    RewriteDataFilesSparkAction spyAction = spy(action);
     RewriteDataFilesCommitManager util = spy(new RewriteDataFilesCommitManager(table));
 
     doAnswer(invocationOnMock -> {
@@ -1123,17 +1110,17 @@ public class TestRewriteDataFilesAction extends SparkTestBase {
     Table table = createTable(1);
 
     AssertHelpers.assertThrows("Should be unable to set Strategy more than once", IllegalArgumentException.class,
-        "Cannot set strategy", () -> actions().rewriteDataFiles(table, tableLocation).binPack().sort());
+        "Cannot set strategy", () -> actions().rewriteDataFiles(table).binPack().sort());
 
     AssertHelpers.assertThrows("Should be unable to set Strategy more than once", IllegalArgumentException.class,
-        "Cannot set strategy", () -> actions().rewriteDataFiles(table, tableLocation).sort().binPack());
+        "Cannot set strategy", () -> actions().rewriteDataFiles(table).sort().binPack());
 
     AssertHelpers.assertThrows(
         "Should be unable to set Strategy more than once",
         IllegalArgumentException.class,
         "Cannot set strategy",
         () ->
-            actions().rewriteDataFiles(table, tableLocation).sort(SortOrder.unsorted()).binPack());
+            actions().rewriteDataFiles(table).sort(SortOrder.unsorted()).binPack());
   }
 
   @Test
@@ -1145,18 +1132,15 @@ public class TestRewriteDataFilesAction extends SparkTestBase {
     writeRecords(4, SCALE, 4);
     table.updateProperties().set(TableProperties.FORMAT_VERSION, "2").commit();
 
-    BaseRewriteDataFilesSparkAction basicRewrite =
-        (BaseRewriteDataFilesSparkAction) basicRewrite(table)
-            .binPack();
+    RewriteDataFilesSparkAction basicRewrite = basicRewrite(table).binPack();
     List<Long> expected = toGroupStream(table, basicRewrite)
         .mapToLong(RewriteFileGroup::sizeInBytes)
         .boxed()
         .collect(Collectors.toList());
 
-    BaseRewriteDataFilesSparkAction jobOrderRewrite =
-        (BaseRewriteDataFilesSparkAction) basicRewrite(table)
-            .option(RewriteDataFiles.REWRITE_JOB_ORDER, RewriteJobOrder.BYTES_ASC.orderName())
-            .binPack();
+    RewriteDataFilesSparkAction jobOrderRewrite = basicRewrite(table)
+        .option(RewriteDataFiles.REWRITE_JOB_ORDER, RewriteJobOrder.BYTES_ASC.orderName())
+        .binPack();
     List<Long> actual = toGroupStream(table, jobOrderRewrite)
         .mapToLong(RewriteFileGroup::sizeInBytes)
         .boxed()
@@ -1177,18 +1161,15 @@ public class TestRewriteDataFilesAction extends SparkTestBase {
     writeRecords(4, SCALE, 4);
     table.updateProperties().set(TableProperties.FORMAT_VERSION, "2").commit();
 
-    BaseRewriteDataFilesSparkAction basicRewrite =
-        (BaseRewriteDataFilesSparkAction) basicRewrite(table)
-            .binPack();
+    RewriteDataFilesSparkAction basicRewrite = basicRewrite(table).binPack();
     List<Long> expected = toGroupStream(table, basicRewrite)
         .mapToLong(RewriteFileGroup::sizeInBytes)
         .boxed()
         .collect(Collectors.toList());
 
-    BaseRewriteDataFilesSparkAction jobOrderRewrite =
-        (BaseRewriteDataFilesSparkAction) basicRewrite(table)
-            .option(RewriteDataFiles.REWRITE_JOB_ORDER, RewriteJobOrder.BYTES_DESC.orderName())
-            .binPack();
+    RewriteDataFilesSparkAction jobOrderRewrite = basicRewrite(table)
+        .option(RewriteDataFiles.REWRITE_JOB_ORDER, RewriteJobOrder.BYTES_DESC.orderName())
+        .binPack();
     List<Long> actual = toGroupStream(table, jobOrderRewrite)
         .mapToLong(RewriteFileGroup::sizeInBytes)
         .boxed()
@@ -1209,18 +1190,15 @@ public class TestRewriteDataFilesAction extends SparkTestBase {
     writeRecords(4, SCALE, 4);
     table.updateProperties().set(TableProperties.FORMAT_VERSION, "2").commit();
 
-    BaseRewriteDataFilesSparkAction basicRewrite =
-        (BaseRewriteDataFilesSparkAction) basicRewrite(table)
-            .binPack();
+    RewriteDataFilesSparkAction basicRewrite = basicRewrite(table).binPack();
     List<Long> expected = toGroupStream(table, basicRewrite)
         .mapToLong(RewriteFileGroup::numFiles)
         .boxed()
         .collect(Collectors.toList());
 
-    BaseRewriteDataFilesSparkAction jobOrderRewrite =
-        (BaseRewriteDataFilesSparkAction) basicRewrite(table)
-            .option(RewriteDataFiles.REWRITE_JOB_ORDER, RewriteJobOrder.FILES_ASC.orderName())
-            .binPack();
+    RewriteDataFilesSparkAction jobOrderRewrite = basicRewrite(table)
+        .option(RewriteDataFiles.REWRITE_JOB_ORDER, RewriteJobOrder.FILES_ASC.orderName())
+        .binPack();
     List<Long> actual = toGroupStream(table, jobOrderRewrite)
         .mapToLong(RewriteFileGroup::numFiles)
         .boxed()
@@ -1241,18 +1219,15 @@ public class TestRewriteDataFilesAction extends SparkTestBase {
     writeRecords(4, SCALE, 4);
     table.updateProperties().set(TableProperties.FORMAT_VERSION, "2").commit();
 
-    BaseRewriteDataFilesSparkAction basicRewrite =
-        (BaseRewriteDataFilesSparkAction) basicRewrite(table)
-            .binPack();
+    RewriteDataFilesSparkAction basicRewrite = basicRewrite(table).binPack();
     List<Long> expected = toGroupStream(table, basicRewrite)
         .mapToLong(RewriteFileGroup::numFiles)
         .boxed()
         .collect(Collectors.toList());
 
-    BaseRewriteDataFilesSparkAction jobOrderRewrite =
-        (BaseRewriteDataFilesSparkAction) basicRewrite(table)
-            .option(RewriteDataFiles.REWRITE_JOB_ORDER, RewriteJobOrder.FILES_DESC.orderName())
-            .binPack();
+    RewriteDataFilesSparkAction jobOrderRewrite = basicRewrite(table)
+        .option(RewriteDataFiles.REWRITE_JOB_ORDER, RewriteJobOrder.FILES_DESC.orderName())
+        .binPack();
     List<Long> actual = toGroupStream(table, jobOrderRewrite)
         .mapToLong(RewriteFileGroup::numFiles)
         .boxed()
@@ -1264,8 +1239,7 @@ public class TestRewriteDataFilesAction extends SparkTestBase {
     Assert.assertNotEquals("Number of files order should not be ascending", actual, expected);
   }
 
-  private Stream<RewriteFileGroup> toGroupStream(Table table,
-      BaseRewriteDataFilesSparkAction rewrite) {
+  private Stream<RewriteFileGroup> toGroupStream(Table table, RewriteDataFilesSparkAction rewrite) {
     rewrite.validateAndInitOptions();
     Map<StructLike, List<List<FileScanTask>>> fileGroupsByPartition =
         rewrite.planFileGroups(table.currentSnapshot().snapshotId());
@@ -1525,7 +1499,7 @@ public class TestRewriteDataFilesAction extends SparkTestBase {
     return results;
   }
 
-  private ActionsProvider actions() {
+  private SparkActions actions() {
     return SparkActions.get();
   }
 

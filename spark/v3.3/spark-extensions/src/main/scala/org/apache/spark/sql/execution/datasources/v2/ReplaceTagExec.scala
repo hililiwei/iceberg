@@ -39,10 +39,15 @@ case class ReplaceTagExec(
       case iceberg: SparkTable =>
 
         val snapshotId = replaceTag.snapshotId.getOrElse(iceberg.table.currentSnapshot().snapshotId())
-        iceberg.table.manageSnapshots()
-          .replaceTag(replaceTag.tag, snapshotId)
-          .setMaxRefAgeMs(replaceTag.tag, replaceTag.snapshotRefRetain.getOrElse(5 * 24 * 60 * 60 * 1000L))
-          .commit()
+        val manageSnapshots = iceberg.table.manageSnapshots()
+        if (replaceTag.snapshotId.nonEmpty) {
+          manageSnapshots.replaceTag(replaceTag.tag, snapshotId)
+        }
+        if (replaceTag.snapshotRefRetain.nonEmpty) {
+          manageSnapshots
+            .setMaxRefAgeMs(replaceTag.tag, replaceTag.snapshotRefRetain.getOrElse(5 * 24 * 60 * 60 * 1000L))
+        }
+        manageSnapshots.commit()
 
       case table =>
         throw new UnsupportedOperationException(s"Cannot replace tag to non-Iceberg table: $table")
@@ -52,6 +57,6 @@ case class ReplaceTagExec(
   }
 
   override def simpleString(maxFields: Int): String = {
-    s"replace tag to new,tag name is:${replaceTag.tag},table name is:${catalog.name}.${ident.quoted} "
+    s"replace tag: ${replaceTag.tag}"
   }
 }

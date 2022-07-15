@@ -47,6 +47,6 @@ case class RemoveTagExec(
   }
 
   override def simpleString(maxFields: Int): String = {
-    s"remove tag for table:${catalog.name}.${ident.quoted},tag name is:${removeTag.tag}"
+    s"remove tag: ${removeTag.tag} for table: ${catalog.name}.${ident.quoted}"
   }
 }

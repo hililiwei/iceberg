@@ -152,7 +152,7 @@ public class TestMigrateTableProcedure extends SparkExtensionsTestBase {
 
   @Test
   public void testMigrateSkipOnError() throws IOException {
-    Assume.assumeTrue(catalogName.equals("spark_catalog"));
+    Assume.assumeTrue(catalogName.equals("testhive"));
 
     String location = temp.newFolder().toString();
     sql("CREATE TABLE %s (id bigint NOT NULL, data string) USING parquet LOCATION '%s'", tableName, location);

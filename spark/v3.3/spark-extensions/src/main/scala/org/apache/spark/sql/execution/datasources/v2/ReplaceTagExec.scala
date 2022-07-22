@@ -25,10 +25,7 @@ import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.catalyst.plans.logical.ReplaceTag
 import org.apache.spark.sql.connector.catalog._
 
-case class ReplaceTagExec(
-                           catalog: TableCatalog,
-                           ident: Identifier,
-                           replaceTag: ReplaceTag) extends LeafV2CommandExec {
+case class ReplaceTagExec(catalog: TableCatalog, ident: Identifier, replaceTag: ReplaceTag) extends LeafV2CommandExec {
 
   import org.apache.spark.sql.connector.catalog.CatalogV2Implicits._
 
@@ -45,7 +42,7 @@ case class ReplaceTagExec(
         }
         if (replaceTag.snapshotRefRetain.nonEmpty) {
           manageSnapshots
-            .setMaxRefAgeMs(replaceTag.tag, replaceTag.snapshotRefRetain.getOrElse(5 * 24 * 60 * 60 * 1000L))
+            .setMaxRefAgeMs(replaceTag.tag, replaceTag.snapshotRefRetain.getOrElse(Long.MaxValue))
         }
         manageSnapshots.commit()
 

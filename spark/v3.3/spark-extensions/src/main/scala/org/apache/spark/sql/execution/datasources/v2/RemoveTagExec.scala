@@ -25,10 +25,7 @@ import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.catalyst.plans.logical.RemoveTag
 import org.apache.spark.sql.connector.catalog._
 
-case class RemoveTagExec(
-                          catalog: TableCatalog,
-                          ident: Identifier,
-                          removeTag: RemoveTag) extends LeafV2CommandExec {
+case class RemoveTagExec(catalog: TableCatalog, ident: Identifier, removeTag: RemoveTag) extends LeafV2CommandExec {
 
   import org.apache.spark.sql.connector.catalog.CatalogV2Implicits._
 

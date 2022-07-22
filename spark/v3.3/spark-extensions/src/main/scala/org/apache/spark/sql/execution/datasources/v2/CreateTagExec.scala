@@ -25,10 +25,7 @@ import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.catalyst.plans.logical.CreateTag
 import org.apache.spark.sql.connector.catalog._
 
-case class CreateTagExec(
-                             catalog: TableCatalog,
-                             ident: Identifier,
-                             createTag: CreateTag) extends LeafV2CommandExec {
+case class CreateTagExec(catalog: TableCatalog, ident: Identifier, createTag: CreateTag) extends LeafV2CommandExec {
 
   import org.apache.spark.sql.connector.catalog.CatalogV2Implicits._
 
@@ -41,7 +38,7 @@ case class CreateTagExec(
         val snapshotId = createTag.snapshotId.getOrElse(iceberg.table.currentSnapshot().snapshotId())
         iceberg.table.manageSnapshots()
           .createTag(createTag.tag, snapshotId)
-          .setMaxRefAgeMs(createTag.tag, createTag.snapshotRefRetain.getOrElse(5 * 24 * 60 * 60 * 1000L))
+          .setMaxRefAgeMs(createTag.tag, createTag.snapshotRefRetain.getOrElse(Long.MaxValue))
           .commit()
 
       case table =>

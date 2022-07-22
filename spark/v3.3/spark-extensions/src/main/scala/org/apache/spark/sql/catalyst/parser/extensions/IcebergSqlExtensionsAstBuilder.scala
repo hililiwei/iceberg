@@ -27,7 +27,9 @@ import org.antlr.v4.runtime.tree.TerminalNode
 import org.apache.iceberg.DistributionMode
 import org.apache.iceberg.NullOrder
 import org.apache.iceberg.SortDirection
+import org.apache.iceberg.exceptions.ValidationException
 import org.apache.iceberg.expressions.Term
+import org.apache.iceberg.relocated.com.google.common.base.Strings
 import org.apache.iceberg.spark.Spark3Util
 import org.apache.spark.sql.AnalysisException
 import org.apache.spark.sql.catalyst.expressions.Expression
@@ -88,64 +90,61 @@ class IcebergSqlExtensionsAstBuilder(delegate: ParserInterface) extends IcebergS
    * Create an CREATE TAG logical command.
    */
   override def visitCreateTag(ctx: CreateTagContext): CreateTag = withOrigin(ctx) {
+    val tagName = ctx.identifier().getText
     val snapshotId = Option(ctx.snapshotId()).map(_.getText.toLong)
     val snapshotRefRetain =
       Option(ctx.snapshotRefRetain()).map(_.getText.toLong * timeUnit(ctx.snapshotRefRetainTimeUnit().getText))
-    validateTag(snapshotId, snapshotRefRetain)
+    validateTag(tagName, snapshotId, snapshotRefRetain)
 
-    CreateTag(
-      typedVisit[Seq[String]](ctx.multipartIdentifier),
-      ctx.identifier().getText,
-      snapshotId,
-      snapshotRefRetain)
+    CreateTag(typedVisit[Seq[String]](ctx.multipartIdentifier), tagName, snapshotId, snapshotRefRetain)
   }
 
   /**
    * Create an REPLACE TAG logical command.
    */
   override def visitReplaceTag(ctx: ReplaceTagContext): ReplaceTag = withOrigin(ctx) {
+    val tagName = ctx.identifier().getText
     val snapshotId = Option(ctx.snapshotId()).map(_.getText.toLong)
     val snapshotRefRetain =
       Option(ctx.snapshotRefRetain()).map(_.getText.toLong * timeUnit(ctx.snapshotRefRetainTimeUnit().getText))
-    validateTag(snapshotId, snapshotRefRetain)
+    validateTag(tagName, snapshotId, snapshotRefRetain)
 
-    ReplaceTag(
-      typedVisit[Seq[String]](ctx.multipartIdentifier),
-      ctx.identifier().getText,
-      snapshotId,
-      snapshotRefRetain)
+    ReplaceTag(typedVisit[Seq[String]](ctx.multipartIdentifier), tagName, snapshotId, snapshotRefRetain)
   }
 
   /**
    * Create an REMOVE TAG logical command.
    */
   override def visitRemoveTag(ctx: RemoveTagContext): RemoveTag = withOrigin(ctx) {
-    RemoveTag(
-      typedVisit[Seq[String]](ctx.multipartIdentifier),
-      ctx.identifier().getText)
+    val tagName = ctx.identifier().getText
+    validateTag(tagName, Option.empty[Long], Option.empty[Long])
+
+    RemoveTag(typedVisit[Seq[String]](ctx.multipartIdentifier), ctx.identifier().getText)
   }
 
   /**
    * Create an ALTER TAG RETENTION logical command.
    */
   override def visitAlterTagRetention(ctx: AlterTagRetentionContext): AlterTagRefRetention = withOrigin(ctx) {
+    val tagName = ctx.identifier().getText
     val snapshotRefRetain =
       Option(ctx.snapshotRefRetain()).map(_.getText.toLong * timeUnit(ctx.snapshotRefRetainTimeUnit().getText))
-    validateTag(Option.empty[Long], snapshotRefRetain)
+    validateTag(tagName, Option.empty[Long], snapshotRefRetain)
 
-    AlterTagRefRetention(
-      typedVisit[Seq[String]](ctx.multipartIdentifier()),
-      ctx.identifier().getText,
-      snapshotRefRetain)
+    AlterTagRefRetention(typedVisit[Seq[String]](ctx.multipartIdentifier()), tagName, snapshotRefRetain)
   }
 
-  private def validateTag(snapshotId: Option[Long], snapshotRefRetain: Option[Long]) = {
+  private def validateTag(tagName: String, snapshotId: Option[Long], snapshotRefRetain: Option[Long]): Unit = {
+    if (Strings.isNullOrEmpty(Strings.nullToEmpty(tagName).trim)) {
+      throw new IllegalArgumentException("Tag name can not be empty or null.")
+    }
+
     if (snapshotId.nonEmpty && snapshotId.get <= 0) {
       throw new IllegalArgumentException("Snapshot ID:" + snapshotId.get + " must be greater than 0.")
     }
 
     if (snapshotRefRetain.nonEmpty && snapshotRefRetain.get <= 0) {
-      throw new IllegalArgumentException("Snapshot Ref Retain:" + snapshotRefRetain.get + " must be greater than 0.")
+      throw new IllegalArgumentException("Max reference age must be greater than 0")
     }
   }
 

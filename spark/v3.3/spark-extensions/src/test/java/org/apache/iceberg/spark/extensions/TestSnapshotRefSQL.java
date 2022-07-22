@@ -64,11 +64,22 @@ public class TestSnapshotRefSQL extends SparkExtensionsTestBase {
         () -> sql("ALTER TABLE %s CREATE TAG %s AS OF VERSION %d RETAIN FOR %d DAYS",
             tableName, tagName, snapshotId, maxRefAge));
 
-    String tagName2 = "t2";
-    AssertHelpers.assertThrows("Cannot set tag to unknown snapshot",
-        ValidationException.class, "unknown snapshot: 0",
+    AssertHelpers.assertThrows("Tag name can not be empty or null.",
+        IllegalArgumentException.class, "Tag name can not be empty or null.",
         () -> sql("ALTER TABLE %s CREATE TAG %s AS OF VERSION %d RETAIN FOR %d DAYS",
-            tableName, tagName2, 0, maxRefAge));
+            tableName, "` `", snapshotId, maxRefAge));
+
+    String tagName2 = "t2";
+    AssertHelpers.assertThrows("Snapshot Id must be greater than 0",
+        IllegalArgumentException.class, "must be greater than 0",
+        () -> sql("ALTER TABLE %s CREATE TAG %s AS OF VERSION %d RETAIN FOR %d DAYS",
+            tableName, tagName2, -1, maxRefAge));
+    Assert.assertEquals(maxRefAge * 24 * 60 * 60 * 1000, ref.maxRefAgeMs().longValue());
+
+    AssertHelpers.assertThrows("Cannot set tag to unknown snapshot",
+        ValidationException.class, "unknown snapshot: 999",
+        () -> sql("ALTER TABLE %s CREATE TAG %s AS OF VERSION %d RETAIN FOR %d DAYS",
+            tableName, tagName2, 999, maxRefAge));
     Assert.assertEquals(maxRefAge * 24 * 60 * 60 * 1000, ref.maxRefAgeMs().longValue());
 
     String tagName3 = "t3";
@@ -76,7 +87,7 @@ public class TestSnapshotRefSQL extends SparkExtensionsTestBase {
         tableName, tagName3, snapshotId);
     table.refresh();
     SnapshotRef ref3 = ((BaseTable) table).operations().current().ref(tagName3);
-    Assert.assertEquals(5 * 24 * 60 * 60 * 1000L, ref3.maxRefAgeMs().longValue());
+    Assert.assertEquals(Long.MAX_VALUE, ref3.maxRefAgeMs().longValue());
   }
 
   @Test
@@ -109,18 +120,16 @@ public class TestSnapshotRefSQL extends SparkExtensionsTestBase {
     Assert.assertEquals(maxRefAge * 24 * 60 * 60 * 1000L, ref2.maxRefAgeMs().longValue());
     Assert.assertEquals(snapshotId2, ref2.snapshotId());
 
-    sql(
-        "ALTER TABLE %s REPLACE TAG %s RETAIN FOR %d DAYS",
-        tableName, tagName, maxRefAge);
+    sql("ALTER TABLE %s REPLACE TAG %s RETAIN FOR %d DAYS", tableName, tagName, maxRefAge);
     table.refresh();
     SnapshotRef ref3 = ((BaseTable) table).operations().current().ref(tagName);
     Assert.assertEquals(snapshotId2, ref3.snapshotId());
 
     AssertHelpers.assertThrows("Cannot set tag to unknown snapshot",
-        ValidationException.class, "unknown snapshot: 0",
+        ValidationException.class, "unknown snapshot: 999",
         () -> sql(
             "ALTER TABLE %s REPLACE TAG %s AS OF VERSION %d",
-            tableName, tagName, 0));
+            tableName, tagName, 999));
 
     String tagName2 = "t2";
     AssertHelpers.assertThrows("Cannot replace a tag that does not exist",
@@ -188,7 +197,7 @@ public class TestSnapshotRefSQL extends SparkExtensionsTestBase {
         () -> sql("ALTER TABLE %s DROP TAG %s",
             tableName, tagName2));
 
-    AssertHelpers.assertThrows("Cannot alter tag with invalid value",
+    AssertHelpers.assertThrows("Max reference age must be greater than 0",
         IllegalArgumentException.class, "Max reference age must be greater than 0",
         () -> sql("ALTER TABLE %s ALTER TAG %s RETAIN %d DAYS",
             tableName, tagName, -1));

@@ -87,25 +87,33 @@ class IcebergSqlExtensionsAstBuilder(delegate: ParserInterface) extends IcebergS
   /**
    * Create an CREATE TAG logical command.
    */
-  override def visitCreateTag(ctx: CreateTagContext): CreateTag =  withOrigin(ctx) {
+  override def visitCreateTag(ctx: CreateTagContext): CreateTag = withOrigin(ctx) {
+    val snapshotId = Option(ctx.snapshotId()).map(_.getText.toLong)
+    val snapshotRefRetain =
+      Option(ctx.snapshotRefRetain()).map(_.getText.toLong * timeUnit(ctx.snapshotRefRetainTimeUnit().getText))
+    validateTag(snapshotId, snapshotRefRetain)
+
     CreateTag(
       typedVisit[Seq[String]](ctx.multipartIdentifier),
       ctx.identifier().getText,
-      Option(ctx.snapshotId()).map(_.getText.toLong),
-      Option(ctx.snapshotRefRetain()).map(_.getText.toLong * timeUnit(ctx.snapshotRefRetainTimeUnit().getText))
-    )
+      snapshotId,
+      snapshotRefRetain)
   }
 
   /**
    * Create an REPLACE TAG logical command.
    */
-  override def visitReplaceTag(ctx: ReplaceTagContext): ReplaceTag =  withOrigin(ctx) {
+  override def visitReplaceTag(ctx: ReplaceTagContext): ReplaceTag = withOrigin(ctx) {
+    val snapshotId = Option(ctx.snapshotId()).map(_.getText.toLong)
+    val snapshotRefRetain =
+      Option(ctx.snapshotRefRetain()).map(_.getText.toLong * timeUnit(ctx.snapshotRefRetainTimeUnit().getText))
+    validateTag(snapshotId, snapshotRefRetain)
+
     ReplaceTag(
       typedVisit[Seq[String]](ctx.multipartIdentifier),
       ctx.identifier().getText,
-      Option(ctx.snapshotId()).map(_.getText.toLong),
-      Option(ctx.snapshotRefRetain()).map(_.getText.toLong * timeUnit(ctx.snapshotRefRetainTimeUnit().getText))
-    )
+      snapshotId,
+      snapshotRefRetain)
   }
 
   /**
@@ -114,19 +122,31 @@ class IcebergSqlExtensionsAstBuilder(delegate: ParserInterface) extends IcebergS
   override def visitRemoveTag(ctx: RemoveTagContext): RemoveTag = withOrigin(ctx) {
     RemoveTag(
       typedVisit[Seq[String]](ctx.multipartIdentifier),
-      ctx.identifier().getText
-    )
+      ctx.identifier().getText)
   }
 
   /**
    * Create an ALTER TAG RETENTION logical command.
    */
-  override def visitAlterTagRetention(ctx: AlterTagRetentionContext): AlterTagRefRetention =  withOrigin(ctx) {
+  override def visitAlterTagRetention(ctx: AlterTagRetentionContext): AlterTagRefRetention = withOrigin(ctx) {
+    val snapshotRefRetain =
+      Option(ctx.snapshotRefRetain()).map(_.getText.toLong * timeUnit(ctx.snapshotRefRetainTimeUnit().getText))
+    validateTag(Option.empty[Long], snapshotRefRetain)
+
     AlterTagRefRetention(
       typedVisit[Seq[String]](ctx.multipartIdentifier()),
       ctx.identifier().getText,
-      Option(ctx.snapshotRefRetain()).map(_.getText.toLong * timeUnit(ctx.snapshotRefRetainTimeUnit().getText))
-    )
+      snapshotRefRetain)
+  }
+
+  private def validateTag(snapshotId: Option[Long], snapshotRefRetain: Option[Long]) = {
+    if (snapshotId.nonEmpty && snapshotId.get <= 0) {
+      throw new IllegalArgumentException("Snapshot ID:" + snapshotId.get + " must be greater than 0.")
+    }
+
+    if (snapshotRefRetain.nonEmpty && snapshotRefRetain.get <= 0) {
+      throw new IllegalArgumentException("Snapshot Ref Retain:" + snapshotRefRetain.get + " must be greater than 0.")
+    }
   }
 
   /**

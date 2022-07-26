@@ -32,6 +32,7 @@ import org.apache.iceberg.PartitionField;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.Snapshot;
+import org.apache.iceberg.SnapshotRef;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableScan;
 import org.apache.iceberg.exceptions.ValidationException;
@@ -84,11 +85,24 @@ class SparkBatchQueryScan extends SparkScan implements SupportsRuntimeFiltering 
     super(spark, table, readConf, expectedSchema, filters);
 
     this.scan = scan;
-    this.snapshotId = readConf.snapshotId();
     this.startSnapshotId = readConf.startSnapshotId();
     this.endSnapshotId = readConf.endSnapshotId();
     this.asOfTimestamp = readConf.asOfTimestamp();
     this.runtimeFilterExpressions = Lists.newArrayList();
+
+    String snapshotRef = readConf.snapshotRef().equalsIgnoreCase(SnapshotRef.MAIN_BRANCH) ? null :
+        readConf.snapshotRef();
+    if (readConf.snapshotId() == null && snapshotRef != null &&
+        !snapshotRef.equalsIgnoreCase(SnapshotRef.MAIN_BRANCH)) {
+      SnapshotRef ref = table().refs().get(snapshotRef);
+      if (ref == null) {
+        throw new IllegalArgumentException("Snapshot ref does not exist: " + snapshotRef);
+      }
+
+      this.snapshotId = ref.snapshotId();
+    } else {
+      this.snapshotId = readConf.snapshotId();
+    }
 
     if (scan == null) {
       this.specIds = Collections.emptySet();

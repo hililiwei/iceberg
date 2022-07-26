@@ -77,6 +77,12 @@ statement
     | ALTER TABLE multipartIdentifier REPLACE TAG identifier (AS OF VERSION snapshotId)?  (RETAIN FOR snapshotRefRetain snapshotRefRetainTimeUnit)? #replaceTag
     | ALTER TABLE multipartIdentifier DROP TAG identifier #removeTag
     | ALTER TABLE multipartIdentifier ALTER TAG identifier RETAIN FOR snapshotRefRetain snapshotRefRetainTimeUnit #alterTagRetention
+    | ALTER TABLE multipartIdentifier CREATE BRANCH identifier (AS OF VERSION snapshotId)?  (WITH SNAPSHOT RETENTION (((numSnapshots SNAPSHOTS) | (snapshotRetain snapshotRetainTimeUnit)) | (numSnapshots SNAPSHOTS snapshotRetain snapshotRetainTimeUnit)))? (RETAIN snapshotRefRetain snapshotRefRetainTimeUnit)?   #createBranch
+    | ALTER TABLE multipartIdentifier REPLACE BRANCH identifier (AS OF VERSION snapshotId)?  (WITH SNAPSHOT RETENTION (((numSnapshots SNAPSHOTS) | (snapshotRetain snapshotRetainTimeUnit)) | (numSnapshots SNAPSHOTS snapshotRetain snapshotRetainTimeUnit)))? (RETAIN snapshotRefRetain snapshotRefRetainTimeUnit)?   #replaceBranch
+    | ALTER TABLE multipartIdentifier DROP BRANCH identifier #removeBranch
+    | ALTER TABLE multipartIdentifier ALTER BRANCH identifier SET SNAPSHOT RETENTION (((numSnapshots SNAPSHOTS) | (snapshotRetain snapshotRetainTimeUnit)) | (numSnapshots SNAPSHOTS snapshotRetain snapshotRetainTimeUnit)) #alterBranchSnapshotRetention
+    | ALTER TABLE multipartIdentifier ALTER BRANCH identifier RETAIN snapshotRefRetain snapshotRefRetainTimeUnit #alterBranchRetention
+    | ALTER TABLE multipartIdentifier RENAME BRANCH identifier TO newIdentifier #renameBranch
     ;
 
 writeSpec
@@ -159,6 +165,10 @@ identifier
     | nonReserved             #unquotedIdentifier
     ;
 
+newIdentifier
+    : identifier
+    ;
+
 quotedIdentifier
     : BACKQUOTED_IDENTIFIER
     ;
@@ -168,13 +178,21 @@ fieldList
     ;
 
 nonReserved
-    : ADD | ALTER | AS | ASC | BY | CALL | CREATE |  DESC | DROP | FIELD | FIRST | LAST | NULLS | OF | ORDERED
+    : ADD | ALTER | AS | ASC | BY | CALL | CREATE | BRANCH | DESC | DROP | FIELD | FIRST | LAST | NULLS | OF | ORDERED
     | PARTITION | TABLE | WRITE | DISTRIBUTED | LOCALLY | UNORDERED | REPLACE | VERSION | WITH | IDENTIFIER_KW | FIELDS
-    | SET | TRUE | TAG | FALSE
+    | SET | SNAPSHOT | SNAPSHOTS | TRUE | TAG | FALSE
     | MAP
     ;
 
 snapshotId
+    : number
+    ;
+
+numSnapshots
+    : number
+    ;
+
+snapshotRetain
     : number
     ;
 
@@ -186,10 +204,15 @@ snapshotRefRetainTimeUnit
     : identifier
     ;
 
+snapshotRetainTimeUnit
+    : identifier
+    ;
+
 ADD: 'ADD';
 ALTER: 'ALTER';
 AS: 'AS';
 ASC: 'ASC';
+BRANCH: 'BRANCH';
 BY: 'BY';
 CALL: 'CALL';
 CREATE: 'CREATE';
@@ -210,12 +233,16 @@ RETAIN: 'RETAIN';
 RETENTION: 'RETENTION';
 IDENTIFIER_KW: 'IDENTIFIER';
 SET: 'SET';
+SNAPSHOT: 'SNAPSHOT';
+SNAPSHOTS: 'SNAPSHOTS';
 TABLE: 'TABLE';
 TAG: 'TAG';
 UNORDERED: 'UNORDERED';
 VERSION: 'VERSION';
 WITH: 'WITH';
 WRITE: 'WRITE';
+RENAME: 'RENAME';
+TO: 'TO';
 FOR: 'FOR';
 
 TRUE: 'TRUE';

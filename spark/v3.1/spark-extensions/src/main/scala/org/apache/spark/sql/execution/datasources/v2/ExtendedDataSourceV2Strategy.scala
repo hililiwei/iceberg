@@ -53,6 +53,7 @@ import org.apache.spark.sql.catalyst.plans.logical.ReplacePartitionField
 import org.apache.spark.sql.catalyst.plans.logical.ReplaceTag
 import org.apache.spark.sql.catalyst.plans.logical.SetIdentifierFields
 import org.apache.spark.sql.catalyst.plans.logical.SetWriteDistributionAndOrdering
+import org.apache.spark.sql.catalyst.plans.logical.UseRef
 import org.apache.spark.sql.connector.catalog.Identifier
 import org.apache.spark.sql.connector.catalog.TableCatalog
 import org.apache.spark.sql.connector.iceberg.read.SupportsFileFilter
@@ -107,6 +108,9 @@ case class ExtendedDataSourceV2Strategy(spark: SparkSession) extends Strategy {
 
     case RenameBranch(IcebergCatalogAndIdentifier(catalog, ident), _, _) =>
       RenameBranchExec(catalog, ident, plan.asInstanceOf[RenameBranch]) :: Nil
+
+    case UseRef(ident) =>
+      UseRefExec(ident, spark) :: Nil
 
     case AlterBranchRefRetention(IcebergCatalogAndIdentifier(catalog, ident), _, _) =>
       AlterBranchRefRetentionExec(catalog, ident, plan.asInstanceOf[AlterBranchRefRetention]) :: Nil

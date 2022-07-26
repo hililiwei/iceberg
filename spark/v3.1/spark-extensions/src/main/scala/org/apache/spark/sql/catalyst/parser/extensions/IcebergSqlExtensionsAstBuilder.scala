@@ -57,6 +57,7 @@ import org.apache.spark.sql.catalyst.plans.logical.ReplacePartitionField
 import org.apache.spark.sql.catalyst.plans.logical.ReplaceTag
 import org.apache.spark.sql.catalyst.plans.logical.SetIdentifierFields
 import org.apache.spark.sql.catalyst.plans.logical.SetWriteDistributionAndOrdering
+import org.apache.spark.sql.catalyst.plans.logical.UseRef
 import org.apache.spark.sql.catalyst.trees.CurrentOrigin
 import org.apache.spark.sql.catalyst.trees.Origin
 import org.apache.spark.sql.connector.expressions
@@ -230,6 +231,20 @@ class IcebergSqlExtensionsAstBuilder(delegate: ParserInterface) extends IcebergS
       Option(ctx.numSnapshots()).map(_.getText.toLong),
       Option(ctx.snapshotRetain()).map(_.getText.toLong * timeUnit(ctx.snapshotRetainTimeUnit().getText))
     )
+  }
+
+  /**
+   * Create an USE BRANCH logical command.
+   */
+  override def visitUseBranch(ctx: UseBranchContext): UseRef = withOrigin(ctx) {
+    UseRef(ctx.identifier().getText)
+  }
+
+  /**
+   * Create an USE TAG logical command.
+   */
+  override def visitUseTag(ctx: UseTagContext): UseRef = withOrigin(ctx) {
+    UseRef(ctx.identifier().getText)
   }
 
   /**

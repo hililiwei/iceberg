@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Objects;
 import org.apache.iceberg.CombinedScanTask;
 import org.apache.iceberg.Schema;
+import org.apache.iceberg.SnapshotRef;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.TableScan;
@@ -43,6 +44,7 @@ class SparkBatchQueryScan extends SparkBatchScan {
   private final Long startSnapshotId;
   private final Long endSnapshotId;
   private final Long asOfTimestamp;
+  private final String snapshotRef;
   private final Long splitSize;
   private final Integer splitLookback;
   private final Long splitOpenFileCost;
@@ -54,12 +56,29 @@ class SparkBatchQueryScan extends SparkBatchScan {
 
     super(spark, table, readConf, caseSensitive, expectedSchema, filters, options);
 
+    boolean specifySnapshot = false;
     this.snapshotId = readConf.snapshotId();
     this.asOfTimestamp = readConf.asOfTimestamp();
+    this.snapshotRef = readConf.snapshotRef();
 
-    if (snapshotId != null && asOfTimestamp != null) {
+    if (snapshotId != null) {
+      specifySnapshot = true;
+    }
+
+    if (asOfTimestamp != null) {
+      if (specifySnapshot) {
+        throw new IllegalArgumentException(
+            "Cannot scan using both snapshot-id as-of-timestamp and snapshotRef(Branch or Tag) to select the table " +
+                "snapshot");
+      } else {
+        specifySnapshot = true;
+      }
+    }
+
+    if (snapshotRef != null && specifySnapshot) {
       throw new IllegalArgumentException(
-          "Cannot scan using both snapshot-id and as-of-timestamp to select the table snapshot");
+          "Cannot scan using both snapshot-id as-of-timestamp and snapshotRef(Branch or Tag) to select the table " +
+              "snapshot");
     }
 
     this.startSnapshotId = readConf.startSnapshotId();
@@ -94,6 +113,10 @@ class SparkBatchQueryScan extends SparkBatchScan {
 
       if (asOfTimestamp != null) {
         scan = scan.asOfTime(asOfTimestamp);
+      }
+
+      if (snapshotRef != null && !snapshotRef.equalsIgnoreCase(SnapshotRef.MAIN_BRANCH)) {
+        scan = scan.useSnapshotRef(snapshotRef);
       }
 
       if (startSnapshotId != null) {
@@ -147,14 +170,15 @@ class SparkBatchQueryScan extends SparkBatchScan {
         Objects.equals(snapshotId, that.snapshotId) &&
         Objects.equals(startSnapshotId, that.startSnapshotId) &&
         Objects.equals(endSnapshotId, that.endSnapshotId) &&
-        Objects.equals(asOfTimestamp, that.asOfTimestamp);
+        Objects.equals(asOfTimestamp, that.asOfTimestamp) &&
+        Objects.equals(snapshotRef, that.snapshotRef);
   }
 
   @Override
   public int hashCode() {
     return Objects.hash(
         table().name(), readSchema(), filterExpressions().toString(), snapshotId, startSnapshotId, endSnapshotId,
-        asOfTimestamp);
+        asOfTimestamp, snapshotRef);
   }
 
   @Override

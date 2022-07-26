@@ -104,6 +104,14 @@ public class SparkReadConf {
         .parse();
   }
 
+  public String snapshotRef() {
+    return confParser.stringConf()
+         .option(SparkReadOptions.SNAPSHOT_REF)
+         .sessionConf(SparkSQLProperties.SNAPSHOT_REF)
+         .defaultValue(SparkSQLProperties.SNAPSHOT_REF_DEFAULT)
+         .parse();
+  }
+
   public boolean streamingSkipOverwriteSnapshots() {
     return confParser.booleanConf()
         .option(SparkReadOptions.STREAMING_SKIP_OVERWRITE_SNAPSHOTS)

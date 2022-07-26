@@ -83,6 +83,8 @@ statement
     | ALTER TABLE multipartIdentifier ALTER BRANCH identifier SET SNAPSHOT RETENTION (((numSnapshots SNAPSHOTS) | (snapshotRetain snapshotRetainTimeUnit)) | (numSnapshots SNAPSHOTS snapshotRetain snapshotRetainTimeUnit)) #alterBranchSnapshotRetention
     | ALTER TABLE multipartIdentifier ALTER BRANCH identifier RETAIN snapshotRefRetain snapshotRefRetainTimeUnit #alterBranchRetention
     | ALTER TABLE multipartIdentifier RENAME BRANCH identifier TO newIdentifier #renameBranch
+    | USE BRANCH identifier                                                                 #useBranch
+    | USE TAG identifier                                                                    #useTag
     ;
 
 writeSpec
@@ -180,7 +182,7 @@ fieldList
 nonReserved
     : ADD | ALTER | AS | ASC | BY | CALL | CREATE | BRANCH | DESC | DROP | FIELD | FIRST | LAST | NULLS | OF | ORDERED
     | PARTITION | TABLE | WRITE | DISTRIBUTED | LOCALLY | UNORDERED | REPLACE | VERSION | WITH | IDENTIFIER_KW | FIELDS
-    | SET | SNAPSHOT | SNAPSHOTS | TRUE | TAG | FALSE
+    | SET | SNAPSHOT | SNAPSHOTS | TRUE | TAG | FALSE | USE
     | MAP
     ;
 
@@ -238,6 +240,7 @@ SNAPSHOTS: 'SNAPSHOTS';
 TABLE: 'TABLE';
 TAG: 'TAG';
 UNORDERED: 'UNORDERED';
+USE: 'USE';
 VERSION: 'VERSION';
 WITH: 'WITH';
 WRITE: 'WRITE';

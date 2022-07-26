@@ -468,6 +468,28 @@ public class TestSnapshotRefSQL extends SparkExtensionsTestBase {
             tableName, tagName, -1));
   }
 
+  @Test
+  public void testUseBranch() throws NoSuchTableException {
+    Assume.assumeTrue(catalogName.equalsIgnoreCase("testhive"));
+    sql("CREATE TABLE %s (id INT, data STRING) USING iceberg", tableName);
+
+    List<SimpleRecord> records = ImmutableList.of(
+            new SimpleRecord(1, "a"),
+            new SimpleRecord(2, "b")
+    );
+    spark.createDataFrame(records, SimpleRecord.class).writeTo(tableName).append();
+
+    String branchName = "b1";
+    sql("ALTER TABLE %s CREATE BRANCH %s", tableName, branchName);
+
+    spark.createDataFrame(records, SimpleRecord.class).writeTo(tableName).append();
+    sql("USE BRANCH b1");
+
+    assertEquals("Should have expected rows",
+            ImmutableList.of(row(1L, "a"), row(2, "b")),
+            sql("SELECT * FROM %s ", tableName));
+  }
+
   private Table createDefaultTableAndInsert2Row() throws NoSuchTableException {
     Assume.assumeTrue(catalogName.equalsIgnoreCase("testhive"));
     sql("CREATE TABLE %s (id INT, data STRING) USING iceberg", tableName);

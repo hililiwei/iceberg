@@ -32,15 +32,25 @@ import org.apache.spark.sql.catalyst.expressions.GenericInternalRow
 import org.apache.spark.sql.catalyst.expressions.NamedExpression
 import org.apache.spark.sql.catalyst.planning.PhysicalOperation
 import org.apache.spark.sql.catalyst.plans.logical.AddPartitionField
+import org.apache.spark.sql.catalyst.plans.logical.AlterBranchRefRetention
+import org.apache.spark.sql.catalyst.plans.logical.AlterBranchSnapshotRetention
+import org.apache.spark.sql.catalyst.plans.logical.AlterTagRefRetention
 import org.apache.spark.sql.catalyst.plans.logical.Call
+import org.apache.spark.sql.catalyst.plans.logical.CreateBranch
+import org.apache.spark.sql.catalyst.plans.logical.CreateTag
 import org.apache.spark.sql.catalyst.plans.logical.DropIdentifierFields
 import org.apache.spark.sql.catalyst.plans.logical.DropPartitionField
 import org.apache.spark.sql.catalyst.plans.logical.DynamicFileFilter
 import org.apache.spark.sql.catalyst.plans.logical.DynamicFileFilterWithCardinalityCheck
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.catalyst.plans.logical.MergeInto
+import org.apache.spark.sql.catalyst.plans.logical.RemoveBranch
+import org.apache.spark.sql.catalyst.plans.logical.RemoveTag
+import org.apache.spark.sql.catalyst.plans.logical.RenameBranch
+import org.apache.spark.sql.catalyst.plans.logical.ReplaceBranch
 import org.apache.spark.sql.catalyst.plans.logical.ReplaceData
 import org.apache.spark.sql.catalyst.plans.logical.ReplacePartitionField
+import org.apache.spark.sql.catalyst.plans.logical.ReplaceTag
 import org.apache.spark.sql.catalyst.plans.logical.SetIdentifierFields
 import org.apache.spark.sql.catalyst.plans.logical.SetWriteDistributionAndOrdering
 import org.apache.spark.sql.connector.catalog.Identifier
@@ -74,8 +84,50 @@ case class ExtendedDataSourceV2Strategy(spark: SparkSession) extends Strategy {
     case DropIdentifierFields(IcebergCatalogAndIdentifier(catalog, ident), fields) =>
       DropIdentifierFieldsExec(catalog, ident, fields) :: Nil
 
+    case CreateTag(IcebergCatalogAndIdentifier(catalog, ident), _, _, _) =>
+      CreateTagExec(catalog, ident, plan.asInstanceOf[CreateTag]) :: Nil
+
+    case ReplaceTag(IcebergCatalogAndIdentifier(catalog, ident), _, _, _) =>
+      ReplaceTagExec(catalog, ident, plan.asInstanceOf[ReplaceTag]) :: Nil
+
+    case RemoveTag(IcebergCatalogAndIdentifier(catalog, ident), _) =>
+      RemoveTagExec(catalog, ident, plan.asInstanceOf[RemoveTag]) :: Nil
+
+    case AlterTagRefRetention(IcebergCatalogAndIdentifier(catalog, ident), _, _) =>
+      AlterTagRefRetentionExec(catalog, ident, plan.asInstanceOf[AlterTagRefRetention]) :: Nil
+
+    case CreateBranch(IcebergCatalogAndIdentifier(catalog, ident), _, _, _, _, _) =>
+      CreateBranchExec(catalog, ident, plan.asInstanceOf[CreateBranch]) :: Nil
+
+    case ReplaceBranch(IcebergCatalogAndIdentifier(catalog, ident), _, _, _, _, _) =>
+      ReplaceBranchExec(catalog, ident, plan.asInstanceOf[ReplaceBranch]) :: Nil
+
+    case RemoveBranch(IcebergCatalogAndIdentifier(catalog, ident), _) =>
+      RemoveBranchExec(catalog, ident, plan.asInstanceOf[RemoveBranch]) :: Nil
+
+    case RenameBranch(IcebergCatalogAndIdentifier(catalog, ident), _, _) =>
+      RenameBranchExec(catalog, ident, plan.asInstanceOf[RenameBranch]) :: Nil
+
+    case AlterBranchRefRetention(IcebergCatalogAndIdentifier(catalog, ident), _, _) =>
+      AlterBranchRefRetentionExec(catalog, ident, plan.asInstanceOf[AlterBranchRefRetention]) :: Nil
+
+    case AlterBranchSnapshotRetention(IcebergCatalogAndIdentifier(catalog, ident), _, _, _) =>
+      AlterBranchSnapshotRefRetentionExec(catalog, ident, plan.asInstanceOf[AlterBranchSnapshotRetention]) :: Nil;
+
+    case CreateTag(IcebergCatalogAndIdentifier(catalog, ident), _, _, _) =>
+      CreateTagExec(catalog, ident, plan.asInstanceOf[CreateTag]) :: Nil
+
+    case ReplaceTag(IcebergCatalogAndIdentifier(catalog, ident), _, _, _) =>
+      ReplaceTagExec(catalog, ident, plan.asInstanceOf[ReplaceTag]) :: Nil
+
+    case RemoveTag(IcebergCatalogAndIdentifier(catalog, ident), _) =>
+      RemoveTagExec(catalog, ident, plan.asInstanceOf[RemoveTag]) :: Nil
+
+    case AlterTagRefRetention(IcebergCatalogAndIdentifier(catalog, ident), _, _) =>
+      AlterTagRefRetentionExec(catalog, ident, plan.asInstanceOf[AlterTagRefRetention]) :: Nil
+
     case SetWriteDistributionAndOrdering(
-        IcebergCatalogAndIdentifier(catalog, ident), distributionMode, ordering) =>
+    IcebergCatalogAndIdentifier(catalog, ident), distributionMode, ordering) =>
       SetWriteDistributionAndOrderingExec(catalog, ident, distributionMode, ordering) :: Nil
 
     case DynamicFileFilter(scanPlan, fileFilterPlan, filterable) =>

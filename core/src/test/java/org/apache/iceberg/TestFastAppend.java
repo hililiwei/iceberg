@@ -25,6 +25,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.iceberg.ManifestEntry.Status;
 import org.apache.iceberg.exceptions.CommitFailedException;
+import org.apache.iceberg.relocated.com.google.common.collect.Iterables;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.iceberg.relocated.com.google.common.collect.Sets;
 import org.junit.Assert;
@@ -536,5 +537,73 @@ public class TestFastAppend extends TableTestBase {
         "Invalid branch",
         IllegalArgumentException.class,
         () -> table.newFastAppend().appendFile(FILE_A).toBranch("some-tag").commit());
+  }
+
+  @Test
+  public void testAppendToBranch() throws UnsupportedOperationException {
+    table.newFastAppend()
+        .appendFile(FILE_A)
+        .commit();
+
+    TableMetadata branchBase = readMetadata();
+    Long branchSnapshotStart = table.currentSnapshot().snapshotId();
+
+    table.newFastAppend()
+        .appendFile(FILE_C)
+        .commit();
+
+    TableMetadata base = readMetadata();
+
+    table.newFastAppend()
+        .appendFile(FILE_D)
+        .commit();
+
+    Iterable<ManifestFile> allManifests = table.currentSnapshot().allManifests(table.io());
+    Assert.assertEquals(3, Iterables.size(allManifests));
+    validateSnapshot(base.currentSnapshot(), table.currentSnapshot(), 3, FILE_D);
+
+    table.manageSnapshots().createBranch("ref", branchSnapshotStart).commit();
+
+    table.newFastAppend()
+        .toBranch("ref")
+        .appendFile(FILE_B).commit();
+
+    Snapshot branchCurrentSnapshot = table.snapshot(table.ops().current().ref("ref").snapshotId());
+
+    Assert.assertEquals(branchSnapshotStart, branchCurrentSnapshot.parentId());
+    validateSnapshot(branchBase.currentSnapshot(), branchCurrentSnapshot, 4, FILE_B);
+
+    Iterable<ManifestFile> branchManifests = branchCurrentSnapshot.allManifests(table.io());
+    Assert.assertEquals(2, Iterables.size(branchManifests));
+
+    TableMetadata newBase = readMetadata();
+    table.newFastAppend()
+        .appendFile(FILE_A2)
+        .commit();
+    validateSnapshot(newBase.currentSnapshot(), table.currentSnapshot(), 5, FILE_A2);
+  }
+
+  @Test(expected = IllegalArgumentException.class)
+  public void testAppendToNullBranch() {
+    table.newFastAppend()
+        .appendFile(FILE_A)
+        .commit();
+
+    table.manageSnapshots().createBranch("ref", table.currentSnapshot().snapshotId()).commit();
+    table.newFastAppend()
+        .toBranch(null)
+        .appendFile(FILE_B)
+        .commit();
+  }
+
+  @Test
+  public void testAppendToInValidBranch() {
+    table.newFastAppend()
+        .appendFile(FILE_A)
+        .commit();
+
+    table.manageSnapshots().createBranch("ref", table.currentSnapshot().snapshotId()).commit();
+    table.newFastAppend().appendFile(FILE_B).toBranch("newBranch").commit();
+    Assert.assertNotNull(table.ops().current().ref("newBranch"));
   }
 }

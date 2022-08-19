@@ -18,10 +18,12 @@
  */
 package org.apache.iceberg;
 
+import org.apache.iceberg.exceptions.ValidationException;
 import org.apache.iceberg.expressions.Expression;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.util.CharSequenceSet;
+import org.apache.iceberg.util.SnapshotUtil;
 
 class BaseRowDelta extends MergingSnapshotProducer<RowDelta> implements RowDelta {
   private Long startingSnapshotId = null; // check all versions by default
@@ -96,24 +98,49 @@ class BaseRowDelta extends MergingSnapshotProducer<RowDelta> implements RowDelta
   }
 
   @Override
+  public RowDelta toBranch(String branch) {
+    Preconditions.checkArgument(branch != null, "branch cannot be null");
+    if (this.current().ref(branch) == null) {
+      super.createNewRef(branch);
+    }
+
+    Preconditions.checkArgument(this.current().ref(branch).type().equals(SnapshotRefType.BRANCH),
+        "%s is not a ref to type branch", branch);
+    setTargetBranch(branch);
+    return self();
+  }
+
+  private void checkIfSnapshotIsAnAncestor(Snapshot current, TableMetadata base) {
+    if (this.startingSnapshotId == null || current == null) {
+      return;
+    }
+
+    for (Snapshot ancestor : SnapshotUtil.ancestorsOf(current.snapshotId(), base::snapshot)) {
+      if (ancestor.snapshotId() == this.startingSnapshotId) {
+        return;
+      }
+
+    }
+    throw new ValidationException("Snapshot %s is not an ancestor of branch %s", startingSnapshotId, targetBranch());
+  }
+
+  @Override
   protected void validate(TableMetadata base, Snapshot snapshot) {
-    if (base.currentSnapshot() != null) {
-      if (!referencedDataFiles.isEmpty()) {
-        validateDataFilesExist(
-            base,
-            startingSnapshotId,
-            referencedDataFiles,
-            !validateDeletes,
-            conflictDetectionFilter);
-      }
+    Snapshot current = base.ref(targetBranch()) != null ?
+        base.snapshot(base.ref(targetBranch()).snapshotId()) : base.currentSnapshot();
 
-      if (validateNewDataFiles) {
-        validateAddedDataFiles(base, startingSnapshotId, conflictDetectionFilter);
-      }
+    checkIfSnapshotIsAnAncestor(current, base);
+    if (!referencedDataFiles.isEmpty()) {
+      validateDataFilesExist(
+          base, startingSnapshotId, referencedDataFiles, !validateDeletes, conflictDetectionFilter);
+    }
 
-      if (validateNewDeleteFiles) {
-        validateNoNewDeleteFiles(base, startingSnapshotId, conflictDetectionFilter);
-      }
+    if (validateNewDataFiles) {
+      validateAddedDataFiles(base, startingSnapshotId, conflictDetectionFilter);
+    }
+
+    if (validateNewDeleteFiles) {
+      validateNoNewDeleteFiles(base, startingSnapshotId, conflictDetectionFilter);
     }
   }
 }

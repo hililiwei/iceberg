@@ -128,6 +128,30 @@ abstract class SnapshotProducer<ThisT> implements SnapshotUpdate<ThisT> {
     this.targetBranch = branch;
   }
 
+  protected String targetBranch() {
+    return targetBranch;
+  }
+
+  @Override
+  public ThisT toBranch(String branch) {
+    throw new UnsupportedOperationException(
+        "Performing operations on a branch is currently not supported");
+  }
+
+  /**
+   * * Will be used by snapshot producer operations to create a new ref if an invalid branch is
+   * passed
+   *
+   * @param branch ref name on which operation is to performed
+   */
+  protected void createNewRef(String branch) {
+    SnapshotRef branchRef =
+        SnapshotRef.branchBuilder(this.current().currentSnapshot().snapshotId()).build();
+    TableMetadata.Builder updatedBuilder = TableMetadata.buildFrom(this.current());
+    updatedBuilder.setRef(branch, branchRef);
+    ops.commit(ops.current(), updatedBuilder.build());
+  }
+
   protected ExecutorService workerPool() {
     return this.workerPool;
   }

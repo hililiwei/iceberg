@@ -44,4 +44,7 @@ public class FlinkWriteOptions {
   // Overrides the table's write.distribution-mode
   public static final ConfigOption<String> DISTRIBUTION_MODE =
       ConfigOptions.key("distribution-mode").stringType().noDefaultValue();
+
+  public static final ConfigOption<String> BRANCH =
+      ConfigOptions.key("branch").stringType().noDefaultValue();
 }

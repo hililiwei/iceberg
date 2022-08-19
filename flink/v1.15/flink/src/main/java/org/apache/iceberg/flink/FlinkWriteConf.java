@@ -23,6 +23,7 @@ import java.util.Map;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.iceberg.DistributionMode;
 import org.apache.iceberg.FileFormat;
+import org.apache.iceberg.SnapshotRef;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableProperties;
 
@@ -104,6 +105,15 @@ public class FlinkWriteConf {
             .defaultValue(TableProperties.WRITE_DISTRIBUTION_MODE_NONE)
             .parse();
     return DistributionMode.fromName(modeName);
+  }
+
+  public String toBranch() {
+    return confParser
+        .stringConf()
+        .option(FlinkWriteOptions.BRANCH.key())
+        .flinkConfig(FlinkWriteOptions.BRANCH)
+        .defaultValue(SnapshotRef.MAIN_BRANCH)
+        .parse();
   }
 
   public int workerPoolSize() {

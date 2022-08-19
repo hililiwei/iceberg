@@ -127,15 +127,19 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
   private final Integer workerPoolSize;
   private transient ExecutorService workerPool;
 
+  private String branch;
+
   IcebergFilesCommitter(
       TableLoader tableLoader,
       boolean replacePartitions,
       Map<String, String> snapshotProperties,
-      Integer workerPoolSize) {
+      Integer workerPoolSize,
+      String branch) {
     this.tableLoader = tableLoader;
     this.replacePartitions = replacePartitions;
     this.snapshotProperties = snapshotProperties;
     this.workerPoolSize = workerPoolSize;
+    this.branch = branch;
   }
 
   @Override
@@ -375,6 +379,7 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
     // used by the sink.
     operation.set(MAX_COMMITTED_CHECKPOINT_ID, Long.toString(checkpointId));
     operation.set(FLINK_JOB_ID, newFlinkJobId);
+    operation.toBranch(branch);
 
     long start = System.currentTimeMillis();
     operation.commit(); // abort is automatically called if this fails.

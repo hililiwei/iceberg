@@ -51,6 +51,7 @@ import org.apache.iceberg.GenericManifestFile;
 import org.apache.iceberg.ManifestContent;
 import org.apache.iceberg.ManifestFile;
 import org.apache.iceberg.PartitionSpec;
+import org.apache.iceberg.SnapshotRef;
 import org.apache.iceberg.TableTestBase;
 import org.apache.iceberg.flink.FlinkSchemaUtil;
 import org.apache.iceberg.flink.SimpleDataUtil;
@@ -863,7 +864,8 @@ public class TestIcebergFilesCommitter extends TableTestBase {
               new TestTableLoader(tablePath),
               false,
               Collections.singletonMap("flink.test", TestIcebergFilesCommitter.class.getName()),
-              ThreadPools.WORKER_THREAD_POOL_SIZE);
+              ThreadPools.WORKER_THREAD_POOL_SIZE,
+              SnapshotRef.MAIN_BRANCH);
       committer.setup(param.getContainingTask(), param.getStreamConfig(), param.getOutput());
       return (T) committer;
     }

@@ -171,6 +171,11 @@ public class FlinkSink {
       return this;
     }
 
+    public Builder toBranch(String targetBranch) {
+      writeOptions.put(FlinkWriteOptions.BRANCH.key(), targetBranch);
+      return this;
+    }
+
     /**
      * The table loader is used for loading tables in {@link IcebergFilesCommitter} lazily, we need
      * this loader because {@link Table} is not serializable and could not just use the loaded table
@@ -415,7 +420,8 @@ public class FlinkSink {
               tableLoader,
               flinkWriteConf.overwriteMode(),
               snapshotProperties,
-              flinkWriteConf.workerPoolSize());
+              flinkWriteConf.workerPoolSize(),
+              flinkWriteConf.toBranch());
       SingleOutputStreamOperator<Void> committerStream =
           writerStream
               .transform(operatorName(ICEBERG_FILES_COMMITTER_NAME), Types.VOID, filesCommitter)

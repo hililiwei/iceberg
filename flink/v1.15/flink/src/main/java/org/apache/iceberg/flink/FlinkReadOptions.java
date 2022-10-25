@@ -105,4 +105,7 @@ public class FlinkReadOptions {
   public static final String LIMIT = "limit";
   public static final ConfigOption<Long> LIMIT_OPTION =
       ConfigOptions.key(PREFIX + LIMIT).longType().defaultValue(-1L);
+
+  public static final ConfigOption<String> SCAN_MODE =
+      ConfigOptions.key("scan-mode").stringType().noDefaultValue();
 }

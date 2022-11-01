@@ -16,10 +16,10 @@
 # under the License.
 
 import random
+from typing import List
 
 import pytest
 
-from pyiceberg.schema import Schema
 from pyiceberg.utils.bin_packing import PackingIterator
 
 
@@ -36,11 +36,11 @@ from pyiceberg.utils.bin_packing import PackingIterator
         ),  # sparse
     ],
 )
-def test_bin_packing(splits, lookback, split_size, open_cost):
-    def weight_func(x):
+def test_bin_packing(splits, lookback, split_size, open_cost) -> None:
+    def weight_func(x: int) -> int:
         return max(x, open_cost)
 
-    item_list_sums = [sum(item) for item in PackingIterator(splits, split_size, lookback, weight_func)]
+    item_list_sums: List[int] = [sum(item) for item in PackingIterator(splits, split_size, lookback, weight_func)]
     assert all([split_size >= item_sum >= 0 for item_sum in item_list_sums])
 
 
@@ -77,22 +77,10 @@ def test_bin_packing(splits, lookback, split_size, open_cost):
         ),
     ],
 )
-def test_bin_packing_lookback(splits, target_weight, lookback, largest_bin_first, expected_lists):
-    def weight_func(x):
+def test_bin_packing_lookback(
+    splits: List[int], target_weight: int, lookback: int, largest_bin_first: bool, expected_lists: List[List[int]]
+):
+    def weight_func(x: int) -> int:
         return x
 
     assert list(PackingIterator(splits, target_weight, lookback, weight_func, largest_bin_first)) == expected_lists
-
-
-def test_serialize_schema(table_schema_simple: Schema):
-    actual = table_schema_simple.json()
-    expected = """{"fields": [{"id": 1, "name": "foo", "type": "string", "required": false}, {"id": 2, "name": "bar", "type": "int", "required": true}, {"id": 3, "name": "baz", "type": "boolean", "required": false}], "schema-id": 1, "identifier-field-ids": [1]}"""
-    assert actual == expected
-
-
-def test_deserialize_schema(table_schema_simple: Schema):
-    actual = Schema.parse_raw(
-        """{"fields": [{"id": 1, "name": "foo", "type": "string", "required": false}, {"id": 2, "name": "bar", "type": "int", "required": true}, {"id": 3, "name": "baz", "type": "boolean", "required": false}], "schema-id": 1, "identifier-field-ids": [1]}"""
-    )
-    expected = table_schema_simple
-    assert actual == expected

@@ -16,7 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 package org.apache.iceberg;
 
 import org.apache.iceberg.expressions.Expression;
@@ -57,11 +56,18 @@ public interface ContentScanTask<F extends ContentFile<F>> extends ScanTask {
 
   /**
    * Returns the residual expression that should be applied to rows in this file scan.
-   * <p>
-   * The residual expression for a file is a filter expression created by partially evaluating the scan's filter
-   * using the file's partition data.
+   *
+   * <p>The residual expression for a file is a filter expression created by partially evaluating
+   * the scan's filter using the file's partition data.
    *
    * @return a residual expression to apply to rows from this scan
    */
   Expression residual();
+
+  @Override
+  default long estimatedRowsCount() {
+    long splitOffset = (file().splitOffsets() != null) ? file().splitOffsets().get(0) : 0L;
+    double scannedFileFraction = ((double) length()) / (file().fileSizeInBytes() - splitOffset);
+    return (long) (scannedFileFraction * file().recordCount());
+  }
 }

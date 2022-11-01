@@ -16,7 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 package org.apache.iceberg.spark.source;
 
 import java.util.Collections;
@@ -48,15 +47,17 @@ import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.sql.util.CaseInsensitiveStringMap;
 
-public class SparkScanBuilder implements ScanBuilder, SupportsPushDownFilters, SupportsPushDownRequiredColumns,
-    SupportsReportStatistics {
+public class SparkScanBuilder
+    implements ScanBuilder,
+        SupportsPushDownFilters,
+        SupportsPushDownRequiredColumns,
+        SupportsReportStatistics {
 
   private static final Filter[] NO_FILTERS = new Filter[0];
 
   private final SparkSession spark;
   private final Table table;
   private final SparkReadConf readConf;
-  private final CaseInsensitiveStringMap options;
   private final List<String> metaColumns = Lists.newArrayList();
 
   private Schema schema = null;
@@ -66,13 +67,13 @@ public class SparkScanBuilder implements ScanBuilder, SupportsPushDownFilters, S
   private Filter[] pushedFilters = NO_FILTERS;
   private boolean ignoreResiduals = false;
 
-  SparkScanBuilder(SparkSession spark, Table table, Schema schema, CaseInsensitiveStringMap options) {
+  SparkScanBuilder(
+      SparkSession spark, Table table, Schema schema, CaseInsensitiveStringMap options) {
     this.spark = spark;
     this.table = table;
     this.schema = schema;
     this.readConf = new SparkReadConf(spark, table, options);
-    this.options = options;
-    this.caseSensitive = Boolean.parseBoolean(spark.conf().get("spark.sql.caseSensitive"));
+    this.caseSensitive = readConf.caseSensitive();
   }
 
   SparkScanBuilder(SparkSession spark, Table table, CaseInsensitiveStringMap options) {
@@ -129,12 +130,16 @@ public class SparkScanBuilder implements ScanBuilder, SupportsPushDownFilters, S
 
   @Override
   public void pruneColumns(StructType requestedSchema) {
-    this.requestedProjection = new StructType(Stream.of(requestedSchema.fields())
-        .filter(field -> MetadataColumns.nonMetadataColumn(field.name()))
-        .toArray(StructField[]::new));
+    this.requestedProjection =
+        new StructType(
+            Stream.of(requestedSchema.fields())
+                .filter(field -> MetadataColumns.nonMetadataColumn(field.name()))
+                .toArray(StructField[]::new));
 
-    // the projection should include all columns that will be returned, including those only used in filters
-    this.schema = SparkSchemaUtil.prune(schema, requestedProjection, filterExpression(), caseSensitive);
+    // the projection should include all columns that will be returned, including those only used in
+    // filters
+    this.schema =
+        SparkSchemaUtil.prune(schema, requestedProjection, filterExpression(), caseSensitive);
 
     Stream.of(requestedSchema.fields())
         .map(StructField::name)
@@ -150,10 +155,11 @@ public class SparkScanBuilder implements ScanBuilder, SupportsPushDownFilters, S
 
   private Schema schemaWithMetadataColumns() {
     // metadata columns
-    List<Types.NestedField> fields = metaColumns.stream()
-        .distinct()
-        .map(name -> MetadataColumns.metadataColumn(table, name))
-        .collect(Collectors.toList());
+    List<Types.NestedField> fields =
+        metaColumns.stream()
+            .distinct()
+            .map(name -> MetadataColumns.metadataColumn(table, name))
+            .collect(Collectors.toList());
     Schema meta = new Schema(fields);
 
     // schema or rows returned by readers
@@ -163,13 +169,12 @@ public class SparkScanBuilder implements ScanBuilder, SupportsPushDownFilters, S
   @Override
   public Scan build() {
     return new SparkBatchQueryScan(
-        spark, table, readConf, caseSensitive, schemaWithMetadataColumns(), filterExpressions, options);
+        spark, table, readConf, schemaWithMetadataColumns(), filterExpressions);
   }
 
   public Scan buildMergeScan() {
     return new SparkMergeScan(
-        spark, table, readConf, caseSensitive, ignoreResiduals,
-        schemaWithMetadataColumns(), filterExpressions, options);
+        spark, table, readConf, ignoreResiduals, schemaWithMetadataColumns(), filterExpressions);
   }
 
   @Override

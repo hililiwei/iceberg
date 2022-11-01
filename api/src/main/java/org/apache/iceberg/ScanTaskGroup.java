@@ -16,7 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 package org.apache.iceberg;
 
 import java.util.Collection;
@@ -27,14 +26,17 @@ import java.util.Collection;
  * @param <T> the type of scan tasks
  */
 public interface ScanTaskGroup<T extends ScanTask> extends ScanTask {
-  /**
-   * Returns scan tasks in this group.
-   */
+  /** Returns scan tasks in this group. */
   Collection<T> tasks();
 
   @Override
   default long sizeBytes() {
     return tasks().stream().mapToLong(ScanTask::sizeBytes).sum();
+  }
+
+  @Override
+  default long estimatedRowsCount() {
+    return tasks().stream().mapToLong(ScanTask::estimatedRowsCount).sum();
   }
 
   @Override

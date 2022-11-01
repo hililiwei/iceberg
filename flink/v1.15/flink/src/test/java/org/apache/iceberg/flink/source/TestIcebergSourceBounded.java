@@ -16,7 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 package org.apache.iceberg.flink.source;
 
 import java.util.Arrays;
@@ -42,6 +41,7 @@ import org.apache.iceberg.flink.TestFixtures;
 import org.apache.iceberg.flink.data.RowDataToRowMapper;
 import org.apache.iceberg.flink.source.assigner.SimpleSplitAssignerFactory;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
+import org.apache.iceberg.relocated.com.google.common.collect.Maps;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
@@ -54,7 +54,8 @@ public class TestIcebergSourceBounded extends TestFlinkScan {
 
   @Override
   protected List<Row> runWithProjection(String... projected) throws Exception {
-    Schema icebergTableSchema = catalog.loadTable(TestFixtures.TABLE_IDENTIFIER).schema();
+    Schema icebergTableSchema =
+        catalogResource.catalog().loadTable(TestFixtures.TABLE_IDENTIFIER).schema();
     TableSchema.Builder builder = TableSchema.builder();
     TableSchema schema = FlinkSchemaUtil.toSchema(FlinkSchemaUtil.convert(icebergTableSchema));
     for (String field : projected) {
@@ -63,26 +64,31 @@ public class TestIcebergSourceBounded extends TestFlinkScan {
     }
     TableSchema flinkSchema = builder.build();
     Schema projectedSchema = FlinkSchemaUtil.convert(icebergTableSchema, flinkSchema);
-    return run(projectedSchema, null, null);
+    return run(projectedSchema, Lists.newArrayList(), Maps.newHashMap(), "", projected);
   }
 
   @Override
   protected List<Row> runWithFilter(Expression filter, String sqlFilter) throws Exception {
-    return run(null, Arrays.asList(filter), null);
+    return run(null, Arrays.asList(filter), Maps.newHashMap(), sqlFilter, "*");
   }
 
   @Override
   protected List<Row> runWithOptions(Map<String, String> options) throws Exception {
-    return run(null, null, options);
+    return run(null, Lists.newArrayList(), options, "", "*");
   }
 
   @Override
   protected List<Row> run() throws Exception {
-    return run(null, null, null);
+    return run(null, Lists.newArrayList(), Maps.newHashMap(), "", "*");
   }
 
-  private List<Row> run(Schema projectedSchema, List<Expression> filters,
-                        Map<String, String> options) throws Exception {
+  protected List<Row> run(
+      Schema projectedSchema,
+      List<Expression> filters,
+      Map<String, String> options,
+      String sqlFilter,
+      String... sqlSelectedFields)
+      throws Exception {
 
     StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
     env.setParallelism(1);
@@ -94,31 +100,31 @@ public class TestIcebergSourceBounded extends TestFlinkScan {
       table = tableLoader.loadTable();
     }
 
-    IcebergSource.Builder<RowData> sourceBuilder = IcebergSource.forRowData()
-        .tableLoader(tableLoader())
-        .assignerFactory(new SimpleSplitAssignerFactory())
-        .flinkConfig(config);
+    IcebergSource.Builder<RowData> sourceBuilder =
+        IcebergSource.forRowData()
+            .tableLoader(tableLoader())
+            .assignerFactory(new SimpleSplitAssignerFactory())
+            .flinkConfig(config);
     if (projectedSchema != null) {
       sourceBuilder.project(projectedSchema);
     }
-    if (filters != null) {
-      sourceBuilder.filters(filters);
-    }
-    if (options != null) {
-      sourceBuilder.properties(options);
-    }
 
-    DataStream<Row> stream = env.fromSource(
-        sourceBuilder.build(),
-        WatermarkStrategy.noWatermarks(),
-        "testBasicRead",
-        TypeInformation.of(RowData.class))
-        .map(new RowDataToRowMapper(FlinkSchemaUtil.convert(
-            projectedSchema == null ? table.schema() : projectedSchema)));
+    sourceBuilder.filters(filters);
+    sourceBuilder.properties(options);
+
+    DataStream<Row> stream =
+        env.fromSource(
+                sourceBuilder.build(),
+                WatermarkStrategy.noWatermarks(),
+                "testBasicRead",
+                TypeInformation.of(RowData.class))
+            .map(
+                new RowDataToRowMapper(
+                    FlinkSchemaUtil.convert(
+                        projectedSchema == null ? table.schema() : projectedSchema)));
 
     try (CloseableIterator<Row> iter = stream.executeAndCollect()) {
       return Lists.newArrayList(iter);
     }
   }
-
 }

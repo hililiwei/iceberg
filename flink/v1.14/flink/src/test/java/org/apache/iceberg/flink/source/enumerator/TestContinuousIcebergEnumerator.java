@@ -16,7 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 package org.apache.iceberg.flink.source.enumerator;
 
 import java.util.Collection;
@@ -33,34 +32,35 @@ import org.apache.iceberg.flink.source.split.IcebergSourceSplit;
 import org.apache.iceberg.flink.source.split.IcebergSourceSplitState;
 import org.apache.iceberg.flink.source.split.IcebergSourceSplitStatus;
 import org.apache.iceberg.flink.source.split.SplitRequestEvent;
-import org.hamcrest.CoreMatchers;
-import org.hamcrest.MatcherAssert;
+import org.assertj.core.api.Assertions;
 import org.junit.Assert;
 import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 public class TestContinuousIcebergEnumerator {
-  @ClassRule
-  public static final TemporaryFolder TEMPORARY_FOLDER = new TemporaryFolder();
+  @ClassRule public static final TemporaryFolder TEMPORARY_FOLDER = new TemporaryFolder();
 
   @Test
   public void testDiscoverSplitWhenNoReaderRegistered() throws Exception {
     ManualContinuousSplitPlanner splitPlanner = new ManualContinuousSplitPlanner();
     TestingSplitEnumeratorContext<IcebergSourceSplit> enumeratorContext =
         new TestingSplitEnumeratorContext<>(4);
-    ScanContext scanContext = ScanContext.builder()
-        .streaming(true)
-        .startingStrategy(StreamingStartingStrategy.TABLE_SCAN_THEN_INCREMENTAL)
-        .build();
-    ContinuousIcebergEnumerator enumerator = createEnumerator(enumeratorContext, scanContext, splitPlanner);
+    ScanContext scanContext =
+        ScanContext.builder()
+            .streaming(true)
+            .startingStrategy(StreamingStartingStrategy.TABLE_SCAN_THEN_INCREMENTAL)
+            .build();
+    ContinuousIcebergEnumerator enumerator =
+        createEnumerator(enumeratorContext, scanContext, splitPlanner);
 
-    Collection<IcebergSourceSplitState> pendingSplitsEmpty = enumerator.snapshotState(1).pendingSplits();
+    Collection<IcebergSourceSplitState> pendingSplitsEmpty =
+        enumerator.snapshotState(1).pendingSplits();
     Assert.assertEquals(0, pendingSplitsEmpty.size());
 
     // make one split available and trigger the periodic discovery
-    List<IcebergSourceSplit> splits = SplitHelpers
-        .createSplitsFromTransientHadoopTable(TEMPORARY_FOLDER, 1, 1);
+    List<IcebergSourceSplit> splits =
+        SplitHelpers.createSplitsFromTransientHadoopTable(TEMPORARY_FOLDER, 1, 1);
     splitPlanner.addSplits(splits, IcebergEnumeratorPosition.of(1L, 1L));
     enumeratorContext.triggerAllActions();
 
@@ -76,27 +76,28 @@ public class TestContinuousIcebergEnumerator {
     ManualContinuousSplitPlanner splitPlanner = new ManualContinuousSplitPlanner();
     TestingSplitEnumeratorContext<IcebergSourceSplit> enumeratorContext =
         new TestingSplitEnumeratorContext<>(4);
-    ScanContext scanContext = ScanContext.builder()
-        .streaming(true)
-        .startingStrategy(StreamingStartingStrategy.TABLE_SCAN_THEN_INCREMENTAL)
-        .build();
-    ContinuousIcebergEnumerator enumerator = createEnumerator(enumeratorContext, scanContext, splitPlanner);
+    ScanContext scanContext =
+        ScanContext.builder()
+            .streaming(true)
+            .startingStrategy(StreamingStartingStrategy.TABLE_SCAN_THEN_INCREMENTAL)
+            .build();
+    ContinuousIcebergEnumerator enumerator =
+        createEnumerator(enumeratorContext, scanContext, splitPlanner);
 
     // register one reader, and let it request a split
     enumeratorContext.registerReader(2, "localhost");
     enumerator.addReader(2);
-    enumerator.handleSourceEvent(2,
-        new SplitRequestEvent());
+    enumerator.handleSourceEvent(2, new SplitRequestEvent());
 
     // make one split available and trigger the periodic discovery
-    List<IcebergSourceSplit> splits = SplitHelpers
-        .createSplitsFromTransientHadoopTable(TEMPORARY_FOLDER, 1, 1);
+    List<IcebergSourceSplit> splits =
+        SplitHelpers.createSplitsFromTransientHadoopTable(TEMPORARY_FOLDER, 1, 1);
     splitPlanner.addSplits(splits, IcebergEnumeratorPosition.of(1L, 1L));
     enumeratorContext.triggerAllActions();
 
     Assert.assertTrue(enumerator.snapshotState(1).pendingSplits().isEmpty());
-    MatcherAssert.assertThat(enumeratorContext.getSplitAssignments().get(2).getAssignedSplits(),
-        CoreMatchers.hasItem(splits.get(0)));
+    Assertions.assertThat(enumeratorContext.getSplitAssignments().get(2).getAssignedSplits())
+        .contains(splits.get(0));
   }
 
   @Test
@@ -104,45 +105,46 @@ public class TestContinuousIcebergEnumerator {
     ManualContinuousSplitPlanner splitPlanner = new ManualContinuousSplitPlanner();
     TestingSplitEnumeratorContext<IcebergSourceSplit> enumeratorContext =
         new TestingSplitEnumeratorContext<>(4);
-    ScanContext config = ScanContext.builder()
-        .streaming(true)
-        .startingStrategy(StreamingStartingStrategy.TABLE_SCAN_THEN_INCREMENTAL)
-        .build();
-    ContinuousIcebergEnumerator enumerator = createEnumerator(enumeratorContext, config, splitPlanner);
+    ScanContext config =
+        ScanContext.builder()
+            .streaming(true)
+            .startingStrategy(StreamingStartingStrategy.TABLE_SCAN_THEN_INCREMENTAL)
+            .build();
+    ContinuousIcebergEnumerator enumerator =
+        createEnumerator(enumeratorContext, config, splitPlanner);
 
     // register one reader, and let it request a split
     enumeratorContext.registerReader(2, "localhost");
     enumerator.addReader(2);
-    enumerator.handleSourceEvent(2,
-        new SplitRequestEvent());
+    enumerator.handleSourceEvent(2, new SplitRequestEvent());
 
     // remove the reader (like in a failure)
     enumeratorContext.registeredReaders().remove(2);
 
     // make one split available and trigger the periodic discovery
-    List<IcebergSourceSplit> splits = SplitHelpers
-        .createSplitsFromTransientHadoopTable(TEMPORARY_FOLDER, 1, 1);
+    List<IcebergSourceSplit> splits =
+        SplitHelpers.createSplitsFromTransientHadoopTable(TEMPORARY_FOLDER, 1, 1);
     Assert.assertEquals(1, splits.size());
     splitPlanner.addSplits(splits, IcebergEnumeratorPosition.of(1L, 1L));
     enumeratorContext.triggerAllActions();
 
     Assert.assertFalse(enumeratorContext.getSplitAssignments().containsKey(2));
-    List<String> pendingSplitIds = enumerator.snapshotState(1).pendingSplits().stream()
-        .map(IcebergSourceSplitState::split)
-        .map(IcebergSourceSplit::splitId)
-        .collect(Collectors.toList());
+    List<String> pendingSplitIds =
+        enumerator.snapshotState(1).pendingSplits().stream()
+            .map(IcebergSourceSplitState::split)
+            .map(IcebergSourceSplit::splitId)
+            .collect(Collectors.toList());
     Assert.assertEquals(splits.size(), pendingSplitIds.size());
     Assert.assertEquals(splits.get(0).splitId(), pendingSplitIds.get(0));
 
     // register the reader again, and let it request a split
     enumeratorContext.registerReader(2, "localhost");
     enumerator.addReader(2);
-    enumerator.handleSourceEvent(2,
-        new SplitRequestEvent());
+    enumerator.handleSourceEvent(2, new SplitRequestEvent());
 
     Assert.assertTrue(enumerator.snapshotState(2).pendingSplits().isEmpty());
-    MatcherAssert.assertThat(enumeratorContext.getSplitAssignments().get(2).getAssignedSplits(),
-        CoreMatchers.hasItem(splits.get(0)));
+    Assertions.assertThat(enumeratorContext.getSplitAssignments().get(2).getAssignedSplits())
+        .contains(splits.get(0));
   }
 
   private static ContinuousIcebergEnumerator createEnumerator(
@@ -160,5 +162,4 @@ public class TestContinuousIcebergEnumerator {
     enumerator.start();
     return enumerator;
   }
-
 }

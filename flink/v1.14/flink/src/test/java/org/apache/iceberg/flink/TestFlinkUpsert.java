@@ -16,7 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 package org.apache.iceberg.flink;
 
 import java.time.LocalDate;
@@ -34,7 +33,6 @@ import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.relocated.com.google.common.collect.Iterables;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.iceberg.relocated.com.google.common.collect.Maps;
-import org.junit.After;
 import org.junit.Before;
 import org.junit.ClassRule;
 import org.junit.Test;
@@ -49,14 +47,14 @@ public class TestFlinkUpsert extends FlinkCatalogTestBase {
   public static final MiniClusterWithClientResource MINI_CLUSTER_RESOURCE =
       MiniClusterResource.createWithClassloaderCheckDisabled();
 
-  @ClassRule
-  public static final TemporaryFolder TEMPORARY_FOLDER = new TemporaryFolder();
+  @ClassRule public static final TemporaryFolder TEMPORARY_FOLDER = new TemporaryFolder();
 
   private final boolean isStreamingJob;
   private final Map<String, String> tableUpsertProps = Maps.newHashMap();
   private TableEnvironment tEnv;
 
-  public TestFlinkUpsert(String catalogName, Namespace baseNamespace, FileFormat format, Boolean isStreamingJob) {
+  public TestFlinkUpsert(
+      String catalogName, Namespace baseNamespace, FileFormat format, Boolean isStreamingJob) {
     super(catalogName, baseNamespace);
     this.isStreamingJob = isStreamingJob;
     tableUpsertProps.put(TableProperties.FORMAT_VERSION, "2");
@@ -64,13 +62,16 @@ public class TestFlinkUpsert extends FlinkCatalogTestBase {
     tableUpsertProps.put(TableProperties.DEFAULT_FILE_FORMAT, format.name());
   }
 
-  @Parameterized.Parameters(name = "catalogName={0}, baseNamespace={1}, format={2}, isStreaming={3}")
+  @Parameterized.Parameters(
+      name = "catalogName={0}, baseNamespace={1}, format={2}, isStreaming={3}")
   public static Iterable<Object[]> parameters() {
     List<Object[]> parameters = Lists.newArrayList();
-    for (FileFormat format : new FileFormat[] {FileFormat.PARQUET, FileFormat.AVRO, FileFormat.ORC}) {
+    for (FileFormat format :
+        new FileFormat[] {FileFormat.PARQUET, FileFormat.AVRO, FileFormat.ORC}) {
       for (Boolean isStreaming : new Boolean[] {true, false}) {
         // Only test with one catalog as this is a file operation concern.
-        // FlinkCatalogTestBase requires the catalog name start with testhadoop if using hadoop catalog.
+        // FlinkCatalogTestBase requires the catalog name start with testhadoop if using hadoop
+        // catalog.
         String catalogName = "testhadoop";
         Namespace baseNamespace = Namespace.of("default");
         parameters.add(new Object[] {catalogName, baseNamespace, format, isStreaming});
@@ -83,12 +84,12 @@ public class TestFlinkUpsert extends FlinkCatalogTestBase {
   protected TableEnvironment getTableEnv() {
     if (tEnv == null) {
       synchronized (this) {
-        EnvironmentSettings.Builder settingsBuilder = EnvironmentSettings
-            .newInstance();
+        EnvironmentSettings.Builder settingsBuilder = EnvironmentSettings.newInstance();
         if (isStreamingJob) {
           settingsBuilder.inStreamingMode();
-          StreamExecutionEnvironment env = StreamExecutionEnvironment
-              .getExecutionEnvironment(MiniClusterResource.DISABLE_CLASSLOADER_CHECK_CONFIG);
+          StreamExecutionEnvironment env =
+              StreamExecutionEnvironment.getExecutionEnvironment(
+                  MiniClusterResource.DISABLE_CLASSLOADER_CHECK_CONFIG);
           env.enableCheckpointing(400);
           env.setMaxParallelism(2);
           env.setParallelism(2);
@@ -111,46 +112,88 @@ public class TestFlinkUpsert extends FlinkCatalogTestBase {
     sql("USE %s", DATABASE);
   }
 
-  @Override
-  @After
-  public void clean() {
-    sql("DROP DATABASE IF EXISTS %s", flinkDatabase);
-    super.clean();
-  }
-
   @Test
   public void testUpsertAndQuery() {
     String tableName = "test_upsert_query";
     LocalDate dt20220301 = LocalDate.of(2022, 3, 1);
     LocalDate dt20220302 = LocalDate.of(2022, 3, 2);
 
-    sql("CREATE TABLE %s(id INT NOT NULL, province STRING NOT NULL, dt DATE, PRIMARY KEY(id,province) NOT ENFORCED) " +
-            "PARTITIONED BY (province) WITH %s",
+    sql(
+        "CREATE TABLE %s(id INT NOT NULL, name STRING NOT NULL, dt DATE, PRIMARY KEY(id,dt) NOT ENFORCED) "
+            + "PARTITIONED BY (dt) WITH %s",
         tableName, toWithClause(tableUpsertProps));
 
     try {
-      sql("INSERT INTO %s VALUES " +
-          "(1, 'a', DATE '2022-03-01')," +
-          "(2, 'b', DATE '2022-03-01')," +
-          "(1, 'b', DATE '2022-03-01')",
+      sql(
+          "INSERT INTO %s VALUES "
+              + "(1, 'Bill', DATE '2022-03-01'),"
+              + "(1, 'Jane', DATE '2022-03-01'),"
+              + "(2, 'Jane', DATE '2022-03-01')",
           tableName);
 
-      sql("INSERT INTO %s VALUES " +
-          "(4, 'a', DATE '2022-03-02')," +
-          "(5, 'b', DATE '2022-03-02')," +
-          "(1, 'b', DATE '2022-03-02')",
+      sql(
+          "INSERT INTO %s VALUES "
+              + "(2, 'Bill', DATE '2022-03-01'),"
+              + "(1, 'Jane', DATE '2022-03-02'),"
+              + "(2, 'Jane', DATE '2022-03-02')",
           tableName);
 
-      List<Row> rowsOn20220301 = Lists.newArrayList(Row.of(2, "b", dt20220301), Row.of(1, "a", dt20220301));
+      List<Row> rowsOn20220301 =
+          Lists.newArrayList(Row.of(1, "Jane", dt20220301), Row.of(2, "Bill", dt20220301));
       TestHelpers.assertRows(
-          sql("SELECT * FROM %s WHERE dt < '2022-03-02'", tableName),
-          rowsOn20220301);
+          sql("SELECT * FROM %s WHERE dt < '2022-03-02'", tableName), rowsOn20220301);
 
-      List<Row> rowsOn20220302 = Lists.newArrayList(
-          Row.of(1, "b", dt20220302), Row.of(4, "a", dt20220302), Row.of(5, "b", dt20220302));
+      List<Row> rowsOn20220302 =
+          Lists.newArrayList(Row.of(1, "Jane", dt20220302), Row.of(2, "Jane", dt20220302));
       TestHelpers.assertRows(
-          sql("SELECT * FROM %s WHERE dt = '2022-03-02'", tableName),
-          rowsOn20220302);
+          sql("SELECT * FROM %s WHERE dt = '2022-03-02'", tableName), rowsOn20220302);
+
+      TestHelpers.assertRows(
+          sql("SELECT * FROM %s", tableName),
+          Lists.newArrayList(Iterables.concat(rowsOn20220301, rowsOn20220302)));
+    } finally {
+      sql("DROP TABLE IF EXISTS %s.%s", flinkDatabase, tableName);
+    }
+  }
+
+  @Test
+  public void testUpsertOptions() {
+    String tableName = "test_upsert_options";
+    LocalDate dt20220301 = LocalDate.of(2022, 3, 1);
+    LocalDate dt20220302 = LocalDate.of(2022, 3, 2);
+
+    Map<String, String> optionsUpsertProps = Maps.newHashMap(tableUpsertProps);
+    optionsUpsertProps.remove(TableProperties.UPSERT_ENABLED);
+    sql(
+        "CREATE TABLE %s(id INT NOT NULL, province STRING NOT NULL, dt DATE, PRIMARY KEY(id,province) NOT ENFORCED) "
+            + "PARTITIONED BY (province) WITH %s",
+        tableName, toWithClause(optionsUpsertProps));
+
+    try {
+      sql(
+          "INSERT INTO %s /*+ OPTIONS('upsert-enabled'='true')*/  VALUES "
+              + "(1, 'a', DATE '2022-03-01'),"
+              + "(2, 'b', DATE '2022-03-01'),"
+              + "(1, 'b', DATE '2022-03-01')",
+          tableName);
+
+      sql(
+          "INSERT INTO %s /*+ OPTIONS('upsert-enabled'='true')*/  VALUES "
+              + "(4, 'a', DATE '2022-03-02'),"
+              + "(5, 'b', DATE '2022-03-02'),"
+              + "(1, 'b', DATE '2022-03-02')",
+          tableName);
+
+      List<Row> rowsOn20220301 =
+          Lists.newArrayList(Row.of(2, "b", dt20220301), Row.of(1, "a", dt20220301));
+      TestHelpers.assertRows(
+          sql("SELECT * FROM %s WHERE dt < '2022-03-02'", tableName), rowsOn20220301);
+
+      List<Row> rowsOn20220302 =
+          Lists.newArrayList(
+              Row.of(1, "b", dt20220302), Row.of(4, "a", dt20220302), Row.of(5, "b", dt20220302));
+      TestHelpers.assertRows(
+          sql("SELECT * FROM %s WHERE dt = '2022-03-02'", tableName), rowsOn20220302);
 
       TestHelpers.assertRows(
           sql("SELECT * FROM %s", tableName),
@@ -163,39 +206,31 @@ public class TestFlinkUpsert extends FlinkCatalogTestBase {
   @Test
   public void testPrimaryKeyEqualToPartitionKey() {
     // This is an SQL based reproduction of TestFlinkIcebergSinkV2#testUpsertOnDataKey
-    String tableName = "upsert_on_data_key";
+    String tableName = "upsert_on_id_key";
     try {
-      sql("CREATE TABLE %s(id INT NOT NULL, data STRING NOT NULL, PRIMARY KEY(data) NOT ENFORCED) " +
-              "PARTITIONED BY (data) WITH %s",
+      sql(
+          "CREATE TABLE %s(id INT NOT NULL, name STRING NOT NULL, PRIMARY KEY(id) NOT ENFORCED) "
+              + "PARTITIONED BY (id) WITH %s",
           tableName, toWithClause(tableUpsertProps));
 
-      sql("INSERT INTO %s VALUES " +
-          "(1, 'aaa')," +
-          "(2, 'aaa')," +
-          "(3, 'bbb')",
-          tableName);
+      sql("INSERT INTO %s VALUES " + "(1, 'Bill')," + "(1, 'Jane')," + "(2, 'Bill')", tableName);
 
       TestHelpers.assertRows(
           sql("SELECT * FROM %s", tableName),
-          Lists.newArrayList(Row.of(2, "aaa"), Row.of(3, "bbb")));
+          Lists.newArrayList(Row.of(1, "Jane"), Row.of(2, "Bill")));
 
-      sql("INSERT INTO %s VALUES " +
-          "(4, 'aaa')," +
-          "(5, 'bbb')",
-          tableName);
+      sql("INSERT INTO %s VALUES " + "(1, 'Bill')," + "(2, 'Jane')", tableName);
 
       TestHelpers.assertRows(
           sql("SELECT * FROM %s", tableName),
-          Lists.newArrayList(Row.of(4, "aaa"), Row.of(5, "bbb")));
+          Lists.newArrayList(Row.of(1, "Bill"), Row.of(2, "Jane")));
 
-      sql("INSERT INTO %s VALUES " +
-          "(6, 'aaa')," +
-          "(7, 'bbb')",
-          tableName);
+      sql("INSERT INTO %s VALUES " + "(3, 'Bill')," + "(4, 'Jane')", tableName);
 
       TestHelpers.assertRows(
           sql("SELECT * FROM %s", tableName),
-          Lists.newArrayList(Row.of(6, "aaa"), Row.of(7, "bbb")));
+          Lists.newArrayList(
+              Row.of(1, "Bill"), Row.of(2, "Jane"), Row.of(3, "Bill"), Row.of(4, "Jane")));
     } finally {
       sql("DROP TABLE IF EXISTS %s.%s", flinkDatabase, tableName);
     }
@@ -206,37 +241,45 @@ public class TestFlinkUpsert extends FlinkCatalogTestBase {
     String tableName = "upsert_on_pk_at_schema_start";
     LocalDate dt = LocalDate.of(2022, 3, 1);
     try {
-      sql("CREATE TABLE %s(data STRING NOT NULL, dt DATE NOT NULL, id INT, PRIMARY KEY(data,dt) NOT ENFORCED) " +
-              "PARTITIONED BY (data) WITH %s",
+      sql(
+          "CREATE TABLE %s( id INT, dt DATE NOT NULL, name STRING NOT NULL, PRIMARY KEY(id,dt) NOT ENFORCED) "
+              + "PARTITIONED BY (dt) WITH %s",
           tableName, toWithClause(tableUpsertProps));
 
-      sql("INSERT INTO %s VALUES " +
-          "('aaa', DATE '2022-03-01', 1)," +
-          "('aaa', DATE '2022-03-01', 2)," +
-          "('bbb', DATE '2022-03-01', 3)",
+      sql(
+          "INSERT INTO %s VALUES "
+              + "(1, DATE '2022-03-01', 'Andy'),"
+              + "(1, DATE '2022-03-01', 'Bill'),"
+              + "(2, DATE '2022-03-01', 'Jane')",
           tableName);
 
       TestHelpers.assertRows(
           sql("SELECT * FROM %s", tableName),
-          Lists.newArrayList(Row.of("aaa", dt, 2), Row.of("bbb", dt, 3)));
+          Lists.newArrayList(Row.of(1, dt, "Bill"), Row.of(2, dt, "Jane")));
 
-      sql("INSERT INTO %s VALUES " +
-          "('aaa', DATE '2022-03-01', 4)," +
-          "('bbb', DATE '2022-03-01', 5)",
+      sql(
+          "INSERT INTO %s VALUES "
+              + "(1, DATE '2022-03-01', 'Jane'),"
+              + "(2, DATE '2022-03-01', 'Bill')",
           tableName);
 
       TestHelpers.assertRows(
           sql("SELECT * FROM %s", tableName),
-          Lists.newArrayList(Row.of("aaa", dt, 4), Row.of("bbb", dt, 5)));
+          Lists.newArrayList(Row.of(1, dt, "Jane"), Row.of(2, dt, "Bill")));
 
-      sql("INSERT INTO %s VALUES " +
-          "('aaa', DATE '2022-03-01', 6)," +
-          "('bbb', DATE '2022-03-01', 7)",
+      sql(
+          "INSERT INTO %s VALUES "
+              + "(3, DATE '2022-03-01', 'Duke'),"
+              + "(4, DATE '2022-03-01', 'Leon')",
           tableName);
 
       TestHelpers.assertRows(
           sql("SELECT * FROM %s", tableName),
-          Lists.newArrayList(Row.of("aaa", dt, 6), Row.of("bbb", dt, 7)));
+          Lists.newArrayList(
+              Row.of(1, dt, "Jane"),
+              Row.of(2, dt, "Bill"),
+              Row.of(3, dt, "Duke"),
+              Row.of(4, dt, "Leon")));
     } finally {
       sql("DROP TABLE IF EXISTS %s.%s", flinkDatabase, tableName);
     }
@@ -244,42 +287,51 @@ public class TestFlinkUpsert extends FlinkCatalogTestBase {
 
   @Test
   public void testPrimaryKeyFieldsAtEndOfTableSchema() {
-    // This is the same test case as testPrimaryKeyFieldsAtBeginningOfSchema, but the primary key fields
+    // This is the same test case as testPrimaryKeyFieldsAtBeginningOfSchema, but the primary key
+    // fields
     // are located at the end of the flink schema.
     String tableName = "upsert_on_pk_at_schema_end";
     LocalDate dt = LocalDate.of(2022, 3, 1);
     try {
-      sql("CREATE TABLE %s(id INT, data STRING NOT NULL, dt DATE NOT NULL, PRIMARY KEY(data,dt) NOT ENFORCED) " +
-              "PARTITIONED BY (data) WITH %s",
+      sql(
+          "CREATE TABLE %s(name STRING NOT NULL, id INT, dt DATE NOT NULL, PRIMARY KEY(id,dt) NOT ENFORCED) "
+              + "PARTITIONED BY (dt) WITH %s",
           tableName, toWithClause(tableUpsertProps));
 
-      sql("INSERT INTO %s VALUES " +
-          "(1, 'aaa', DATE '2022-03-01')," +
-          "(2, 'aaa', DATE '2022-03-01')," +
-          "(3, 'bbb', DATE '2022-03-01')",
+      sql(
+          "INSERT INTO %s VALUES "
+              + "('Andy', 1, DATE '2022-03-01'),"
+              + "('Bill', 1, DATE '2022-03-01'),"
+              + "('Jane', 2, DATE '2022-03-01')",
           tableName);
 
       TestHelpers.assertRows(
           sql("SELECT * FROM %s", tableName),
-          Lists.newArrayList(Row.of(2, "aaa", dt), Row.of(3, "bbb", dt)));
+          Lists.newArrayList(Row.of("Bill", 1, dt), Row.of("Jane", 2, dt)));
 
-      sql("INSERT INTO %s VALUES " +
-          "(4, 'aaa', DATE '2022-03-01')," +
-          "(5, 'bbb', DATE '2022-03-01')",
+      sql(
+          "INSERT INTO %s VALUES "
+              + "('Jane', 1, DATE '2022-03-01'),"
+              + "('Bill', 2, DATE '2022-03-01')",
           tableName);
 
       TestHelpers.assertRows(
           sql("SELECT * FROM %s", tableName),
-          Lists.newArrayList(Row.of(4, "aaa", dt), Row.of(5, "bbb", dt)));
+          Lists.newArrayList(Row.of("Jane", 1, dt), Row.of("Bill", 2, dt)));
 
-      sql("INSERT INTO %s VALUES " +
-          "(6, 'aaa', DATE '2022-03-01')," +
-          "(7, 'bbb', DATE '2022-03-01')",
+      sql(
+          "INSERT INTO %s VALUES "
+              + "('Duke', 3, DATE '2022-03-01'),"
+              + "('Leon', 4, DATE '2022-03-01')",
           tableName);
 
       TestHelpers.assertRows(
           sql("SELECT * FROM %s", tableName),
-          Lists.newArrayList(Row.of(6, "aaa", dt), Row.of(7, "bbb", dt)));
+          Lists.newArrayList(
+              Row.of("Jane", 1, dt),
+              Row.of("Bill", 2, dt),
+              Row.of("Duke", 3, dt),
+              Row.of("Leon", 4, dt)));
     } finally {
       sql("DROP TABLE IF EXISTS %s.%s", flinkDatabase, tableName);
     }

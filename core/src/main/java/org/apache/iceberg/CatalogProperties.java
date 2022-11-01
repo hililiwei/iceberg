@@ -16,15 +16,13 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 package org.apache.iceberg;
 
 import java.util.concurrent.TimeUnit;
 
 public class CatalogProperties {
 
-  private CatalogProperties() {
-  }
+  private CatalogProperties() {}
 
   public static final String CATALOG_IMPL = "catalog-impl";
   public static final String FILE_IO_IMPL = "io-impl";
@@ -34,32 +32,92 @@ public class CatalogProperties {
 
   /**
    * Controls whether the catalog will cache table entries upon load.
-   * <p>
-   * If {@link #CACHE_EXPIRATION_INTERVAL_MS} is set to zero, this value
-   * will be ignored and the cache will be disabled.
+   *
+   * <p>If {@link #CACHE_EXPIRATION_INTERVAL_MS} is set to zero, this value will be ignored and the
+   * cache will be disabled.
    */
   public static final String CACHE_ENABLED = "cache-enabled";
+
   public static final boolean CACHE_ENABLED_DEFAULT = true;
 
   /**
    * Controls the duration for which entries in the catalog are cached.
-   * <p>
-   * Behavior of specific values of cache.expiration-interval-ms:
+   *
+   * <p>Behavior of specific values of cache.expiration-interval-ms:
+   *
    * <ul>
-   *   <li> Zero - Caching and cache expiration are both disabled</li>
-   *   <li> Negative Values - Cache expiration is turned off and entries expire only on refresh etc</li>
-   *   <li> Positive Values - Cache entries expire if not accessed via the cache after this many milliseconds</li>
+   *   <li>Zero - Caching and cache expiration are both disabled
+   *   <li>Negative Values - Cache expiration is turned off and entries expire only on refresh etc
+   *   <li>Positive Values - Cache entries expire if not accessed via the cache after this many
+   *       milliseconds
    * </ul>
    */
   public static final String CACHE_EXPIRATION_INTERVAL_MS = "cache.expiration-interval-ms";
+
   public static final long CACHE_EXPIRATION_INTERVAL_MS_DEFAULT = TimeUnit.SECONDS.toMillis(30);
   public static final long CACHE_EXPIRATION_INTERVAL_MS_OFF = -1;
+
+  /**
+   * Controls whether to use caching during manifest reads or not.
+   *
+   * <p>Enabling manifest file caching require the following configuration constraints to be true:
+   *
+   * <ul>
+   *   <li>{@link #IO_MANIFEST_CACHE_EXPIRATION_INTERVAL_MS} must be a non-negative value.
+   *   <li>{@link #IO_MANIFEST_CACHE_MAX_TOTAL_BYTES} must be a positive value.
+   *   <li>{@link #IO_MANIFEST_CACHE_MAX_CONTENT_LENGTH} must be a positive value.
+   * </ul>
+   */
+  public static final String IO_MANIFEST_CACHE_ENABLED = "io.manifest.cache-enabled";
+
+  public static final boolean IO_MANIFEST_CACHE_ENABLED_DEFAULT = false;
+
+  /**
+   * Controls the maximum duration for which an entry stays in the manifest cache.
+   *
+   * <p>Must be a non-negative value. Following are specific behaviors of this config:
+   *
+   * <ul>
+   *   <li>Zero - Cache entries expires only if it gets evicted due to memory pressure from {@link
+   *       #IO_MANIFEST_CACHE_MAX_TOTAL_BYTES} setting.
+   *   <li>Positive Values - Cache entries expire if not accessed via the cache after this many
+   *       milliseconds
+   * </ul>
+   */
+  public static final String IO_MANIFEST_CACHE_EXPIRATION_INTERVAL_MS =
+      "io.manifest.cache.expiration-interval-ms";
+
+  public static final long IO_MANIFEST_CACHE_EXPIRATION_INTERVAL_MS_DEFAULT =
+      TimeUnit.SECONDS.toMillis(60);
+
+  /**
+   * Controls the maximum total amount of bytes to cache in manifest cache.
+   *
+   * <p>Must be a positive value.
+   */
+  public static final String IO_MANIFEST_CACHE_MAX_TOTAL_BYTES =
+      "io.manifest.cache.max-total-bytes";
+
+  public static final long IO_MANIFEST_CACHE_MAX_TOTAL_BYTES_DEFAULT = 100 * 1024 * 1024;
+
+  /**
+   * Controls the maximum length of file to be considered for caching.
+   *
+   * <p>An {@link org.apache.iceberg.io.InputFile} will not be cached if the length is longer than
+   * this limit. Must be a positive value.
+   */
+  public static final String IO_MANIFEST_CACHE_MAX_CONTENT_LENGTH =
+      "io.manifest.cache.max-content-length";
+
+  public static final long IO_MANIFEST_CACHE_MAX_CONTENT_LENGTH_DEFAULT = 8 * 1024 * 1024;
 
   public static final String URI = "uri";
   public static final String CLIENT_POOL_SIZE = "clients";
   public static final int CLIENT_POOL_SIZE_DEFAULT = 2;
-  public static final String CLIENT_POOL_CACHE_EVICTION_INTERVAL_MS = "client.pool.cache.eviction-interval-ms";
-  public static final long CLIENT_POOL_CACHE_EVICTION_INTERVAL_MS_DEFAULT = TimeUnit.MINUTES.toMillis(5);
+  public static final String CLIENT_POOL_CACHE_EVICTION_INTERVAL_MS =
+      "client.pool.cache.eviction-interval-ms";
+  public static final long CLIENT_POOL_CACHE_EVICTION_INTERVAL_MS_DEFAULT =
+      TimeUnit.MINUTES.toMillis(5);
 
   public static final String LOCK_IMPL = "lock-impl";
 

@@ -311,7 +311,7 @@ Partition specs capture the transform from table data to partition values. This 
 | **`truncate[W]`** | Value truncated to width `W` (see below)                     | `int`, `long`, `decimal`, `string`                                                                        | Source type |
 | **`year`**        | Extract a date or timestamp year, as years from 1970         | `date`, `timestamp`, `timestamptz`                                                                        | `int`       |
 | **`month`**       | Extract a date or timestamp month, as months from 1970-01-01 | `date`, `timestamp`, `timestamptz`                                                                        | `int`       |
-| **`day`**         | Extract a date or timestamp day, as days from 1970-01-01     | `date`, `timestamp`, `timestamptz`                                                                        | `date`      |
+| **`day`**         | Extract a date or timestamp day, as days from 1970-01-01     | `date`, `timestamp`, `timestamptz`                                                                        | `int`      |
 | **`hour`**        | Extract a timestamp hour, as hours from 1970-01-01 00:00:00  | `timestamp`, `timestamptz`                                                                                        | `int`       |
 | **`void`**        | Always produces `null`                                       | Any                                                                                                       | Source type or `int` |
 
@@ -411,12 +411,13 @@ A manifest file must store the partition spec and other metadata as properties i
 
 The schema of a manifest file is a struct called `manifest_entry` with the following fields:
 
-| v1         | v2         | Field id, name           | Type                                                      | Description                                                                           |
-| ---------- | ---------- |--------------------------|-----------------------------------------------------------|---------------------------------------------------------------------------------------|
-| _required_ | _required_ | **`0  status`**          | `int` with meaning: `0: EXISTING` `1: ADDED` `2: DELETED` | Used to track additions and deletions. Deletes are informational only and not used in scans.                                                 |
-| _required_ | _optional_ | **`1  snapshot_id`**     | `long`                                                    | Snapshot id where the file was added, or deleted if status is 2. Inherited when null. |
-|            | _optional_ | **`3  sequence_number`** | `long`                                                    | Sequence number when the file was added. Inherited when null.                         |
-| _required_ | _required_ | **`2  data_file`**       | `data_file` `struct` (see below)                          | File path, partition tuple, metrics, ...                                              |
+| v1         | v2         | Field id, name                | Type                                                      | Description |
+| ---------- | ---------- |-------------------------------|-----------------------------------------------------------|-------------|
+| _required_ | _required_ | **`0  status`**               | `int` with meaning: `0: EXISTING` `1: ADDED` `2: DELETED` | Used to track additions and deletions. Deletes are informational only and not used in scans. |
+| _required_ | _optional_ | **`1  snapshot_id`**          | `long`                                                    | Snapshot id where the file was added, or deleted if status is 2. Inherited when null. |
+|            | _optional_ | **`3  sequence_number`**      | `long`                                                    | Data sequence number of the file. Inherited when null and status is 1 (added). |
+|            | _optional_ | **`4  file_sequence_number`** | `long`                                                    | File sequence number indicating when the file was added. Inherited when null and status is 1 (added). |
+| _required_ | _required_ | **`2  data_file`**            | `data_file` `struct` (see below)                          | File path, partition tuple, metrics, ... |
 
 `data_file` is a struct with the following fields:
 
@@ -459,11 +460,14 @@ The column metrics maps are used when filtering to select both data and delete f
 
 The manifest entry fields are used to keep track of the snapshot in which files were added or logically deleted. The `data_file` struct is nested inside of the manifest entry so that it can be easily passed to job planning without the manifest entry fields.
 
-When a file is added to the dataset, it’s manifest entry should store the snapshot ID in which the file was added and set status to 1 (added).
+When a file is added to the dataset, its manifest entry should store the snapshot ID in which the file was added and set status to 1 (added).
 
-When a file is replaced or deleted from the dataset, it’s manifest entry fields store the snapshot ID in which the file was deleted and status 2 (deleted). The file may be deleted from the file system when the snapshot in which it was deleted is garbage collected, assuming that older snapshots have also been garbage collected [1].
+When a file is replaced or deleted from the dataset, its manifest entry fields store the snapshot ID in which the file was deleted and status 2 (deleted). The file may be deleted from the file system when the snapshot in which it was deleted is garbage collected, assuming that older snapshots have also been garbage collected [1].
 
-Iceberg v2 adds a sequence number to the entry and makes the snapshot id optional. Both fields, `sequence_number` and `snapshot_id`, are inherited from manifest metadata when `null`. That is, if the field is `null` for an entry, then the entry must inherit its value from the manifest file's metadata, stored in the manifest list [2].
+Iceberg v2 adds data and file sequence numbers to the entry and makes the snapshot ID optional. Values for these fields are inherited from manifest metadata when `null`. That is, if the field is `null` for an entry, then the entry must inherit its value from the manifest file's metadata, stored in the manifest list.
+The `sequence_number` field represents the data sequence number and must never change after a file is added to the dataset. The data sequence number represents a relative age of the file content and should be used for planning which delete files apply to a data file.
+The `file_sequence_number` field represents the sequence number of the snapshot that added the file and must also remain unchanged upon assigning at commit. The file sequence number can't be used for pruning delete files as the data within the file may have an older data sequence number. 
+The data and file sequence numbers are inherited only if the entry status is 1 (added). If the entry status is 0 (existing) or 2 (deleted), the entry must include both sequence numbers explicitly.
 
 Notes:
 
@@ -474,9 +478,10 @@ Notes:
 
 Manifests track the sequence number when a data or delete file was added to the table.
 
-When adding new file, its sequence number is set to `null` because the snapshot's sequence number is not assigned until the snapshot is successfully committed. When reading, sequence numbers are inherited by replacing `null` with the manifest's sequence number from the manifest list.
+When adding a new file, its data and file sequence numbers are set to `null` because the snapshot's sequence number is not assigned until the snapshot is successfully committed. When reading, sequence numbers are inherited by replacing `null` with the manifest's sequence number from the manifest list.
+It is also possible to add a new file with data that logically belongs to an older sequence number. In that case, the data sequence number must be provided explicitly and not inherited. However, the file sequence number must be always assigned when the snapshot is successfully committed.
 
-When writing an existing file to a new manifest, the sequence number must be non-null and set to the sequence number that was inherited.
+When writing an existing file to a new manifest or marking an existing file as deleted, the data and file sequence numbers must be non-null and set to the original values that were either inherited or provided at the commit time.
 
 Inheriting sequence numbers through the metadata tree allows writing a new manifest without a known sequence number, so that a manifest can be written once and reused in commit retries. To change a sequence number for a retry, only the manifest list must be rewritten.
 
@@ -535,7 +540,7 @@ Manifest list files store `manifest_file`, a struct with the following fields:
 | _required_ | _required_ | **`502 partition_spec_id`**    | `int`                                       | ID of a partition spec used to write the manifest; must be listed in table metadata `partition-specs` |
 |            | _required_ | **`517 content`**              | `int` with meaning: `0: data`, `1: deletes` | The type of files tracked by the manifest, either data or delete files; 0 for all v1 manifests |
 |            | _required_ | **`515 sequence_number`**      | `long`                                      | The sequence number when the manifest was added to the table; use 0 when reading v1 manifest lists |
-|            | _required_ | **`516 min_sequence_number`**  | `long`                                      | The minimum sequence number of all data or delete files in the manifest; use 0 when reading v1 manifest lists |
+|            | _required_ | **`516 min_sequence_number`**  | `long`                                      | The minimum data sequence number of all live data or delete files in the manifest; use 0 when reading v1 manifest lists |
 | _required_ | _required_ | **`503 added_snapshot_id`**    | `long`                                      | ID of the snapshot where the  manifest file was added |
 | _optional_ | _required_ | **`504 added_files_count`**    | `int`                                       | Number of entries in the manifest that have status `ADDED` (1), when `null` this is assumed to be non-zero |
 | _optional_ | _required_ | **`505 existing_files_count`** | `int`                                       | Number of entries in the manifest that have status `EXISTING` (0), when `null` this is assumed to be non-zero |
@@ -582,16 +587,16 @@ Note that for any snapshot, all file paths marked with "ADDED" or "EXISTING" may
 Delete files that match the query filter must be applied to data files at read time, limited by the scope of the delete file using the following rules.
 
 * A _position_ delete file must be applied to a data file when all of the following are true:
-    - The data file's sequence number is _less than or equal to_ the delete file's sequence number
+    - The data file's data sequence number is _less than or equal to_ the delete file's data sequence number
     - The data file's partition (both spec and partition values) is equal to the delete file's partition
 * An _equality_ delete file must be applied to a data file when all of the following are true:
-    - The data file's sequence number is _strictly less than_ the delete's sequence number
+    - The data file's data sequence number is _strictly less than_ the delete's data sequence number
     - The data file's partition (both spec and partition values) is equal to the delete file's partition _or_ the delete file's partition spec is unpartitioned
 
 In general, deletes are applied only to data files that are older and in the same partition, except for two special cases:
 
 * Equality delete files stored with an unpartitioned spec are applied as global deletes. Otherwise, delete files do not apply to files in other partitions.
-* Position delete files must be applied to data files from the same commit, when the data and delete file sequence numbers are equal. This allows deleting rows that were added in the same commit.
+* Position delete files must be applied to data files from the same commit, when the data and delete file data sequence numbers are equal. This allows deleting rows that were added in the same commit.
 
 
 Notes:
@@ -665,8 +670,36 @@ Table metadata consists of the following fields:
 | _optional_ | _required_ | **`sort-orders`**| A list of sort orders, stored as full sort order objects. |
 | _optional_ | _required_ | **`default-sort-order-id`**| Default sort order id of the table. Note that this could be used by writers, but is not used when reading because reads use the specs stored in manifest files. |
 |            | _optional_ | **`refs`** | A map of snapshot references. The map keys are the unique snapshot reference names in the table, and the map values are snapshot reference objects. There is always a `main` branch reference pointing to the `current-snapshot-id` even if the `refs` map is null. |
+| _optional_ | _optional_ | **`statistics`** | A list (optional) of [table statistics](#table-statistics). |
 
 For serialization details, see Appendix C.
+
+#### Table statistics
+
+Table statistics files are valid [Puffin files](../puffin-spec). Statistics are informational. A reader can choose to
+ignore statistics information. Statistics support is not required to read the table correctly. A table can contain
+many statistics files associated with different table snapshots.
+
+Statistics files metadata within `statistics` table metadata field is a struct with the following fields:
+
+| v1 | v2 | Field name | Type | Description |
+|----|----|------------|------|-------------|
+| _required_ | _required_ | **`snapshot-id`** | `string` | ID of the Iceberg table's snapshot the statistics were computed from. |
+| _required_ | _required_ | **`statistics-path`** | `string` | Path of the statistics file. See [Puffin file format](../puffin-spec). |
+| _required_ | _required_ | **`file-size-in-bytes`** | `long` | Size of the statistics file. |
+| _required_ | _required_ | **`file-footer-size-in-bytes`** | `long` | Total size of the statistics file's footer (not the footer payload size). See [Puffin file format](../puffin-spec) for footer definition. |
+| _optional_ | _optional_ | **`key-metadata`** | Base64-encoded implementation-specific key metadata for encryption. |
+| _required_ | _required_ | **`blob-metadata`** | `list<blob metadata>` (see below) | A list of the blob metadata for statistics contained in the file with structure described below. |
+
+Blob metadata is a struct with the following fields:
+
+| v1 | v2 | Field name | Type | Description |
+|----|----|------------|------|-------------|
+| _required_ | _required_ | **`type`** | `string` | Type of the blob. Matches Blob type in the Puffin file. |
+| _required_ | _required_ | **`snapshot-id`** | `long` | ID of the Iceberg table's snapshot the blob was computed from. |
+| _required_ | _required_ | **`sequence-number`** | `long` | Sequence number of the Iceberg table's snapshot the blob was computed from. |
+| _required_ | _required_ | **`fields`** | `list<integer>` | Ordered list of fields, given by field ID, on which the statistic was calculated. |
+| _optional_ | _optional_ | **`properties`** | `map<string, string>` | Additional properties associated with the statistic. Subset of Blob properties in the Puffin file. |
 
 
 #### Commit Conflict Resolution and Retry
@@ -865,7 +898,7 @@ Note that the string map case is for maps where the key type is a string. Using 
 
 Values should be stored in Parquet using the types and logical type annotations in the table below. Column IDs are required.
 
-Lists must use the [3-level representation](https://github.com/apache/parquet-format/blob/master/LogicalTypes#lists).
+Lists must use the [3-level representation](https://github.com/apache/parquet-format/blob/master/LogicalTypes.md#lists).
 
 | Type               | Parquet physical type                                              | Logical type                                | Notes                                                          |
 |--------------------|--------------------------------------------------------------------|---------------------------------------------|----------------------------------------------------------------|
@@ -1134,15 +1167,15 @@ This serialization scheme is for storing single values as individual binary valu
 | **`long`**         | **`JSON long`**                           | `34`                                       | |
 | **`float`**        | **`JSON number`**                         | `1.0`                                      | |
 | **`double`**       | **`JSON number`**                         | `1.0`                                      | |
-| **`decimal(P,S)`** | **`JSON number`**                         | `14.20`                                    | Stores the decimal as a number with S places after the decimal |
+| **`decimal(P,S)`** | **`JSON string`**                         | `"14.20"`, `"2E+20"`                       | Stores the string representation of the decimal value, specifically, for values with a positive scale, the number of digits to the right of the decimal point is used to indicate scale, for values with a negative scale, the scientific notation is used and the exponent must equal the negated scale |
 | **`date`**         | **`JSON string`**                         | `"2017-11-16"`                             | Stores ISO-8601 standard date |
 | **`time`**         | **`JSON string`**                         | `"22:31:08.123456"`                        | Stores ISO-8601 standard time with microsecond precision |
 | **`timestamp`**    | **`JSON string`**                         | `"2017-11-16T22:31:08.123456"`             | Stores ISO-8601 standard timestamp with microsecond precision; must not include a zone offset |
-| **`timestamptz`**  | **`JSON string`**                         | `"2017-11-16T22:31:08.123456-07:00"`       | Stores ISO-8601 standard timestamp with microsecond precision; must include a zone offset |
+| **`timestamptz`**  | **`JSON string`**                         | `"2017-11-16T22:31:08.123456+00:00"`       | Stores ISO-8601 standard timestamp with microsecond precision; must include a zone offset and it must be '+00:00' |
 | **`string`**       | **`JSON string`**                         | `"iceberg"`                                | |
 | **`uuid`**         | **`JSON string`**                         | `"f79c3e09-677c-4bbd-a479-3f349cb785e7"`   | Stores the lowercase uuid string |
-| **`fixed(L)`**     | **`JSON string`**                         | `"0x00010203"`                             | Stored as a hexadecimal string, prefixed by `0x` |
-| **`binary`**       | **`JSON string`**                         | `"0x00010203"`                             | Stored as a hexadecimal string, prefixed by `0x` |
+| **`fixed(L)`**     | **`JSON string`**                         | `"000102ff"`                               | Stored as a hexadecimal string |
+| **`binary`**       | **`JSON string`**                         | `"000102ff"`                               | Stored as a hexadecimal string |
 | **`struct`**       | **`JSON object by field ID`**             | `{"1": 1, "2": "bar"}`                     | Stores struct fields using the field ID as the JSON field name; field values are stored using this JSON single-value format |
 | **`list`**         | **`JSON array of values`**                | `[1, 2, 3]`                                | Stores a JSON array of values that are serialized using this JSON single-value format |
 | **`map`**          | **`JSON object of key and value arrays`** | `{ "keys": ["a", "b"], "values": [1, 2] }` | Stores arrays of keys and values; individual keys and values are serialized using this JSON single-value format |
@@ -1166,6 +1199,7 @@ Writing v1 metadata:
 * Manifest list field `min-sequence-number` should not be written
 * Manifest list field `content` must be 0 (data) or omitted
 * Manifest entry field `sequence_number` should not be written
+* Manifest entry field `file_sequence_number` should not be written
 * Data file field `content` must be 0 (data) or omitted
 
 Reading v1 metadata for v2:
@@ -1176,6 +1210,7 @@ Reading v1 metadata for v2:
 * Manifest list field `min-sequence-number` must default to 0
 * Manifest list field `content` must default to 0 (data)
 * Manifest entry field `sequence_number` must default to 0
+* Manifest entry field `file_sequence_number` must default to 0
 * Data file field `content` must default to 0 (data)
 
 Writing v2 metadata:
@@ -1214,6 +1249,7 @@ Writing v2 metadata:
 * Manifest `manifest_entry`:
     * `snapshot_id` is now optional to support inheritance
     * `sequence_number` was added and is optional, to support inheritance
+    * `file_sequence_number` was added and is optional, to support inheritance
 * Manifest `data_file`:
     * `content` was added and is required; 0=data, 1=position deletes, 2=equality deletes; default to 0 when reading v1 manifests
     * `equality_ids` was added, to be used for equality deletes only

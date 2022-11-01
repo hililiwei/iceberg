@@ -16,14 +16,11 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 package org.apache.iceberg;
 
 import java.io.Serializable;
 
-/**
- * A scan task.
- */
+/** A scan task. */
 public interface ScanTask extends Serializable {
   /**
    * The number of bytes that should be read by this scan task.
@@ -35,6 +32,15 @@ public interface ScanTask extends Serializable {
   }
 
   /**
+   * The estimated number of rows produced by this scan task.
+   *
+   * @return the estimated number of produced rows
+   */
+  default long estimatedRowsCount() {
+    return 100_000;
+  }
+
+  /**
    * The number of files that will be opened by this scan task.
    *
    * @return the number of files to open
@@ -43,9 +49,7 @@ public interface ScanTask extends Serializable {
     return 1;
   }
 
-  /**
-   * Returns true if this is a {@link FileScanTask}, false otherwise.
-   */
+  /** Returns true if this is a {@link FileScanTask}, false otherwise. */
   default boolean isFileScanTask() {
     return false;
   }
@@ -60,9 +64,7 @@ public interface ScanTask extends Serializable {
     throw new IllegalStateException("Not a FileScanTask: " + this);
   }
 
-  /**
-   * Returns true if this is a {@link DataTask}, false otherwise.
-   */
+  /** Returns true if this is a {@link DataTask}, false otherwise. */
   default boolean isDataTask() {
     return false;
   }

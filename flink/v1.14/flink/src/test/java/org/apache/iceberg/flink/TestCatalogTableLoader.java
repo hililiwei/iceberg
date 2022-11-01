@@ -16,7 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 package org.apache.iceberg.flink;
 
 import java.io.ByteArrayInputStream;
@@ -43,14 +42,13 @@ import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-/**
- * Test for {@link CatalogLoader} and {@link TableLoader}.
- */
+/** Test for {@link CatalogLoader} and {@link TableLoader}. */
 public class TestCatalogTableLoader extends FlinkTestBase {
 
   private static File warehouse = null;
   private static final TableIdentifier IDENTIFIER = TableIdentifier.of("default", "my_table");
-  private static final Schema SCHEMA = new Schema(Types.NestedField.required(1, "f1", Types.StringType.get()));
+  private static final Schema SCHEMA =
+      new Schema(Types.NestedField.required(1, "f1", Types.StringType.get()));
 
   @BeforeClass
   public static void createWarehouse() throws IOException {
@@ -71,7 +69,7 @@ public class TestCatalogTableLoader extends FlinkTestBase {
   @Test
   public void testHadoopCatalogLoader() throws IOException, ClassNotFoundException {
     Map<String, String> properties = Maps.newHashMap();
-    properties.put(CatalogProperties.WAREHOUSE_LOCATION, "file:" + warehouse);
+    properties.put(CatalogProperties.WAREHOUSE_LOCATION, "file:" + getCrossOSPath(warehouse));
     CatalogLoader loader = CatalogLoader.hadoop("my_catalog", hiveConf, properties);
     validateCatalogLoader(loader);
   }
@@ -84,7 +82,7 @@ public class TestCatalogTableLoader extends FlinkTestBase {
 
   @Test
   public void testHadoopTableLoader() throws IOException, ClassNotFoundException {
-    String location = "file:" + warehouse + "/my_table";
+    String location = "file:" + getCrossOSPath(warehouse) + "/my_table";
     new HadoopTables(hiveConf).create(SCHEMA, location);
     validateTableLoader(TableLoader.fromHadoopTable(location, hiveConf));
   }
@@ -95,12 +93,14 @@ public class TestCatalogTableLoader extends FlinkTestBase {
     validateTableLoader(TableLoader.fromCatalog(catalogLoader, IDENTIFIER));
   }
 
-  private static void validateCatalogLoader(CatalogLoader loader) throws IOException, ClassNotFoundException {
+  private static void validateCatalogLoader(CatalogLoader loader)
+      throws IOException, ClassNotFoundException {
     Table table = javaSerAndDeSer(loader).loadCatalog().createTable(IDENTIFIER, SCHEMA);
     validateHadoopConf(table);
   }
 
-  private static void validateTableLoader(TableLoader loader) throws IOException, ClassNotFoundException {
+  private static void validateTableLoader(TableLoader loader)
+      throws IOException, ClassNotFoundException {
     TableLoader copied = javaSerAndDeSer(loader);
     copied.open();
     try {
@@ -112,7 +112,9 @@ public class TestCatalogTableLoader extends FlinkTestBase {
 
   private static void validateHadoopConf(Table table) {
     FileIO io = table.io();
-    Assertions.assertThat(io).as("FileIO should be a HadoopFileIO").isInstanceOf(HadoopFileIO.class);
+    Assertions.assertThat(io)
+        .as("FileIO should be a HadoopFileIO")
+        .isInstanceOf(HadoopFileIO.class);
     HadoopFileIO hadoopIO = (HadoopFileIO) io;
     Assert.assertEquals("my_value", hadoopIO.conf().get("my_key"));
   }
@@ -124,7 +126,8 @@ public class TestCatalogTableLoader extends FlinkTestBase {
       out.writeObject(object);
     }
 
-    try (ObjectInputStream in = new ObjectInputStream(new ByteArrayInputStream(bytes.toByteArray()))) {
+    try (ObjectInputStream in =
+        new ObjectInputStream(new ByteArrayInputStream(bytes.toByteArray()))) {
       return (T) in.readObject();
     }
   }

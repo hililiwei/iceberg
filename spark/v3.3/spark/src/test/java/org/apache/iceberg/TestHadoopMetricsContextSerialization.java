@@ -16,7 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 package org.apache.iceberg;
 
 import java.io.IOException;
@@ -28,7 +27,7 @@ import org.junit.Test;
 
 public class TestHadoopMetricsContextSerialization {
 
-  @Test(expected = Test.None.class)
+  @Test
   public void testHadoopMetricsContextKryoSerialization() throws IOException {
     MetricsContext metricsContext = new HadoopMetricsContext("s3");
 
@@ -37,12 +36,13 @@ public class TestHadoopMetricsContextSerialization {
     MetricsContext deserializedMetricContext = KryoHelpers.roundTripSerialize(metricsContext);
     // statistics are properly re-initialized post de-serialization
     deserializedMetricContext
-        .counter(FileIOMetricsContext.WRITE_BYTES, Long.class, MetricsContext.Unit.BYTES)
+        .counter(FileIOMetricsContext.WRITE_BYTES, MetricsContext.Unit.BYTES)
         .increment();
   }
 
-  @Test(expected = Test.None.class)
-  public void testHadoopMetricsContextJavaSerialization() throws IOException, ClassNotFoundException {
+  @Test
+  public void testHadoopMetricsContextJavaSerialization()
+      throws IOException, ClassNotFoundException {
     MetricsContext metricsContext = new HadoopMetricsContext("s3");
 
     metricsContext.initialize(Maps.newHashMap());
@@ -50,7 +50,7 @@ public class TestHadoopMetricsContextSerialization {
     MetricsContext deserializedMetricContext = TestHelpers.roundTripSerialize(metricsContext);
     // statistics are properly re-initialized post de-serialization
     deserializedMetricContext
-        .counter(FileIOMetricsContext.WRITE_BYTES, Long.class, MetricsContext.Unit.BYTES)
+        .counter(FileIOMetricsContext.WRITE_BYTES, MetricsContext.Unit.BYTES)
         .increment();
   }
 }

@@ -16,13 +16,11 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 package org.apache.iceberg.puffin;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
-import java.io.StringWriter;
 import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.Map;
@@ -33,8 +31,7 @@ import org.apache.iceberg.util.JsonUtil;
 
 public final class FileMetadataParser {
 
-  private FileMetadataParser() {
-  }
+  private FileMetadataParser() {}
 
   private static final String BLOBS = "blobs";
   private static final String PROPERTIES = "properties";
@@ -48,18 +45,7 @@ public final class FileMetadataParser {
   private static final String COMPRESSION_CODEC = "compression-codec";
 
   public static String toJson(FileMetadata fileMetadata, boolean pretty) {
-    try {
-      StringWriter writer = new StringWriter();
-      JsonGenerator generator = JsonUtil.factory().createGenerator(writer);
-      if (pretty) {
-        generator.useDefaultPrettyPrinter();
-      }
-      toJson(fileMetadata, generator);
-      generator.flush();
-      return writer.toString();
-    } catch (IOException e) {
-      throw new UncheckedIOException("Failed to write json for: " + fileMetadata, e);
-    }
+    return JsonUtil.generate(gen -> toJson(fileMetadata, gen), pretty);
   }
 
   public static FileMetadata fromJson(String json) {
@@ -97,9 +83,9 @@ public final class FileMetadataParser {
   static FileMetadata fileMetadataFromJson(JsonNode json) {
 
     ImmutableList.Builder<BlobMetadata> blobs = ImmutableList.builder();
-    JsonNode blobsJson = json.get(BLOBS);
-    Preconditions.checkArgument(blobsJson != null && blobsJson.isArray(),
-        "Cannot parse blobs from non-array: %s", blobsJson);
+    JsonNode blobsJson = JsonUtil.get(BLOBS, json);
+    Preconditions.checkArgument(
+        blobsJson.isArray(), "Cannot parse blobs from non-array: %s", blobsJson);
     for (JsonNode blobJson : blobsJson) {
       blobs.add(blobMetadataFromJson(blobJson));
     }
@@ -110,9 +96,7 @@ public final class FileMetadataParser {
       properties = JsonUtil.getStringMap(PROPERTIES, json);
     }
 
-    return new FileMetadata(
-        blobs.build(),
-        properties);
+    return new FileMetadata(blobs.build(), properties);
   }
 
   static void toJson(BlobMetadata blobMetadata, JsonGenerator generator) throws IOException {
@@ -160,15 +144,7 @@ public final class FileMetadataParser {
       properties = JsonUtil.getStringMap(PROPERTIES, json);
     }
 
-
     return new BlobMetadata(
-        type,
-        fields,
-        snapshotId,
-        sequenceNumber,
-        offset,
-        length,
-        compressionCodec,
-        properties);
+        type, fields, snapshotId, sequenceNumber, offset, length, compressionCodec, properties);
   }
 }

@@ -16,8 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 package org.apache.iceberg.spark.source;
+
+import static org.apache.iceberg.types.Types.NestedField.optional;
+import static org.apache.iceberg.types.Types.NestedField.required;
 
 import java.io.IOException;
 import java.util.Comparator;
@@ -57,23 +59,20 @@ import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.annotations.Threads;
 import org.openjdk.jmh.infra.Blackhole;
 
-import static org.apache.iceberg.types.Types.NestedField.optional;
-import static org.apache.iceberg.types.Types.NestedField.required;
-
 public abstract class WritersBenchmark extends IcebergSourceBenchmark {
 
   private static final int NUM_ROWS = 2500000;
   private static final long TARGET_FILE_SIZE_IN_BYTES = 50L * 1024 * 1024;
 
-  private static final Schema SCHEMA = new Schema(
-      required(1, "longCol", Types.LongType.get()),
-      required(2, "intCol", Types.IntegerType.get()),
-      required(3, "floatCol", Types.FloatType.get()),
-      optional(4, "doubleCol", Types.DoubleType.get()),
-      optional(5, "decimalCol", Types.DecimalType.of(20, 5)),
-      optional(6, "timestampCol", Types.TimestampType.withZone()),
-      optional(7, "stringCol", Types.StringType.get())
-  );
+  private static final Schema SCHEMA =
+      new Schema(
+          required(1, "longCol", Types.LongType.get()),
+          required(2, "intCol", Types.IntegerType.get()),
+          required(3, "floatCol", Types.FloatType.get()),
+          optional(4, "doubleCol", Types.DoubleType.get()),
+          optional(5, "decimalCol", Types.DecimalType.of(20, 5)),
+          optional(6, "timestampCol", Types.TimestampType.withZone()),
+          optional(7, "stringCol", Types.StringType.get()));
 
   private Iterable<InternalRow> rows;
   private Iterable<InternalRow> positionDeleteRows;
@@ -88,11 +87,14 @@ public abstract class WritersBenchmark extends IcebergSourceBenchmark {
     setupSpark();
 
     List<InternalRow> data = Lists.newArrayList(RandomData.generateSpark(SCHEMA, NUM_ROWS, 0L));
-    Transform<Integer, Integer> transform = Transforms.bucket(Types.IntegerType.get(), 32);
-    data.sort(Comparator.comparingInt(row -> transform.apply(row.getInt(1))));
+    Transform<Integer, Integer> transform = Transforms.bucket(32);
+    data.sort(
+        Comparator.comparingInt(
+            row -> transform.bind(Types.IntegerType.get()).apply(row.getInt(1))));
     this.rows = data;
 
-    this.positionDeleteRows = RandomData.generateSpark(DeleteSchemaUtil.pathPosSchema(), NUM_ROWS, 0L);
+    this.positionDeleteRows =
+        RandomData.generateSpark(DeleteSchemaUtil.pathPosSchema(), NUM_ROWS, 0L);
 
     this.unpartitionedSpec = table().specs().get(0);
     Preconditions.checkArgument(unpartitionedSpec.isUnpartitioned());
@@ -118,9 +120,7 @@ public abstract class WritersBenchmark extends IcebergSourceBenchmark {
     Table table = tables.create(SCHEMA, spec, properties, newTableLocation());
 
     // add a partitioned spec to the table
-    table.updateSpec()
-        .addField(Expressions.bucket("intCol", 32))
-        .commit();
+    table.updateSpec().addField(Expressions.bucket("intCol", 32)).commit();
 
     return table;
   }
@@ -131,13 +131,14 @@ public abstract class WritersBenchmark extends IcebergSourceBenchmark {
     FileIO io = table().io();
 
     OutputFileFactory fileFactory = newFileFactory();
-    SparkFileWriterFactory writerFactory = SparkFileWriterFactory.builderFor(table())
-        .dataFileFormat(fileFormat())
-        .dataSchema(table().schema())
-        .build();
+    SparkFileWriterFactory writerFactory =
+        SparkFileWriterFactory.builderFor(table())
+            .dataFileFormat(fileFormat())
+            .dataSchema(table().schema())
+            .build();
 
-    ClusteredDataWriter<InternalRow> writer = new ClusteredDataWriter<>(
-        writerFactory, fileFactory, io, TARGET_FILE_SIZE_IN_BYTES);
+    ClusteredDataWriter<InternalRow> writer =
+        new ClusteredDataWriter<>(writerFactory, fileFactory, io, TARGET_FILE_SIZE_IN_BYTES);
 
     try (ClusteredDataWriter<InternalRow> closeableWriter = writer) {
       for (InternalRow row : rows) {
@@ -157,13 +158,14 @@ public abstract class WritersBenchmark extends IcebergSourceBenchmark {
 
     Schema writeSchema = table().schema();
     StructType sparkWriteType = SparkSchemaUtil.convert(writeSchema);
-    SparkAppenderFactory appenders = SparkAppenderFactory.builderFor(table(), writeSchema, sparkWriteType)
-        .spec(unpartitionedSpec)
-        .build();
+    SparkAppenderFactory appenders =
+        SparkAppenderFactory.builderFor(table(), writeSchema, sparkWriteType)
+            .spec(unpartitionedSpec)
+            .build();
 
-    TaskWriter<InternalRow> writer = new UnpartitionedWriter<>(
-        unpartitionedSpec, fileFormat(), appenders,
-        fileFactory, io, TARGET_FILE_SIZE_IN_BYTES);
+    TaskWriter<InternalRow> writer =
+        new UnpartitionedWriter<>(
+            unpartitionedSpec, fileFormat(), appenders, fileFactory, io, TARGET_FILE_SIZE_IN_BYTES);
 
     try (TaskWriter<InternalRow> closableWriter = writer) {
       for (InternalRow row : rows) {
@@ -180,13 +182,14 @@ public abstract class WritersBenchmark extends IcebergSourceBenchmark {
     FileIO io = table().io();
 
     OutputFileFactory fileFactory = newFileFactory();
-    SparkFileWriterFactory writerFactory = SparkFileWriterFactory.builderFor(table())
-        .dataFileFormat(fileFormat())
-        .dataSchema(table().schema())
-        .build();
+    SparkFileWriterFactory writerFactory =
+        SparkFileWriterFactory.builderFor(table())
+            .dataFileFormat(fileFormat())
+            .dataSchema(table().schema())
+            .build();
 
-    ClusteredDataWriter<InternalRow> writer = new ClusteredDataWriter<>(
-        writerFactory, fileFactory, io, TARGET_FILE_SIZE_IN_BYTES);
+    ClusteredDataWriter<InternalRow> writer =
+        new ClusteredDataWriter<>(writerFactory, fileFactory, io, TARGET_FILE_SIZE_IN_BYTES);
 
     PartitionKey partitionKey = new PartitionKey(partitionedSpec, table().schema());
     StructType dataSparkType = SparkSchemaUtil.convert(table().schema());
@@ -211,14 +214,21 @@ public abstract class WritersBenchmark extends IcebergSourceBenchmark {
 
     Schema writeSchema = table().schema();
     StructType sparkWriteType = SparkSchemaUtil.convert(writeSchema);
-    SparkAppenderFactory appenders = SparkAppenderFactory.builderFor(table(), writeSchema, sparkWriteType)
-        .spec(partitionedSpec)
-        .build();
+    SparkAppenderFactory appenders =
+        SparkAppenderFactory.builderFor(table(), writeSchema, sparkWriteType)
+            .spec(partitionedSpec)
+            .build();
 
-    TaskWriter<InternalRow> writer = new SparkPartitionedWriter(
-        partitionedSpec, fileFormat(), appenders,
-        fileFactory, io, TARGET_FILE_SIZE_IN_BYTES,
-        writeSchema, sparkWriteType);
+    TaskWriter<InternalRow> writer =
+        new SparkPartitionedWriter(
+            partitionedSpec,
+            fileFormat(),
+            appenders,
+            fileFactory,
+            io,
+            TARGET_FILE_SIZE_IN_BYTES,
+            writeSchema,
+            sparkWriteType);
 
     try (TaskWriter<InternalRow> closableWriter = writer) {
       for (InternalRow row : rows) {
@@ -235,13 +245,14 @@ public abstract class WritersBenchmark extends IcebergSourceBenchmark {
     FileIO io = table().io();
 
     OutputFileFactory fileFactory = newFileFactory();
-    SparkFileWriterFactory writerFactory = SparkFileWriterFactory.builderFor(table())
-        .dataFileFormat(fileFormat())
-        .dataSchema(table().schema())
-        .build();
+    SparkFileWriterFactory writerFactory =
+        SparkFileWriterFactory.builderFor(table())
+            .dataFileFormat(fileFormat())
+            .dataSchema(table().schema())
+            .build();
 
-    FanoutDataWriter<InternalRow> writer = new FanoutDataWriter<>(
-        writerFactory, fileFactory, io, TARGET_FILE_SIZE_IN_BYTES);
+    FanoutDataWriter<InternalRow> writer =
+        new FanoutDataWriter<>(writerFactory, fileFactory, io, TARGET_FILE_SIZE_IN_BYTES);
 
     PartitionKey partitionKey = new PartitionKey(partitionedSpec, table().schema());
     StructType dataSparkType = SparkSchemaUtil.convert(table().schema());
@@ -266,14 +277,21 @@ public abstract class WritersBenchmark extends IcebergSourceBenchmark {
 
     Schema writeSchema = table().schema();
     StructType sparkWriteType = SparkSchemaUtil.convert(writeSchema);
-    SparkAppenderFactory appenders = SparkAppenderFactory.builderFor(table(), writeSchema, sparkWriteType)
-        .spec(partitionedSpec)
-        .build();
+    SparkAppenderFactory appenders =
+        SparkAppenderFactory.builderFor(table(), writeSchema, sparkWriteType)
+            .spec(partitionedSpec)
+            .build();
 
-    TaskWriter<InternalRow> writer = new SparkPartitionedFanoutWriter(
-        partitionedSpec, fileFormat(), appenders,
-        fileFactory, io, TARGET_FILE_SIZE_IN_BYTES,
-        writeSchema, sparkWriteType);
+    TaskWriter<InternalRow> writer =
+        new SparkPartitionedFanoutWriter(
+            partitionedSpec,
+            fileFormat(),
+            appenders,
+            fileFactory,
+            io,
+            TARGET_FILE_SIZE_IN_BYTES,
+            writeSchema,
+            sparkWriteType);
 
     try (TaskWriter<InternalRow> closableWriter = writer) {
       for (InternalRow row : rows) {
@@ -286,20 +304,23 @@ public abstract class WritersBenchmark extends IcebergSourceBenchmark {
 
   @Benchmark
   @Threads(1)
-  public void writePartitionedClusteredEqualityDeleteWriter(Blackhole blackhole) throws IOException {
+  public void writePartitionedClusteredEqualityDeleteWriter(Blackhole blackhole)
+      throws IOException {
     FileIO io = table().io();
 
     int equalityFieldId = table().schema().findField("longCol").fieldId();
 
     OutputFileFactory fileFactory = newFileFactory();
-    SparkFileWriterFactory writerFactory = SparkFileWriterFactory.builderFor(table())
-        .dataFileFormat(fileFormat())
-        .equalityDeleteRowSchema(table().schema())
-        .equalityFieldIds(new int[]{equalityFieldId})
-        .build();
+    SparkFileWriterFactory writerFactory =
+        SparkFileWriterFactory.builderFor(table())
+            .dataFileFormat(fileFormat())
+            .equalityDeleteRowSchema(table().schema())
+            .equalityFieldIds(new int[] {equalityFieldId})
+            .build();
 
-    ClusteredEqualityDeleteWriter<InternalRow> writer = new ClusteredEqualityDeleteWriter<>(
-        writerFactory, fileFactory, io, TARGET_FILE_SIZE_IN_BYTES);
+    ClusteredEqualityDeleteWriter<InternalRow> writer =
+        new ClusteredEqualityDeleteWriter<>(
+            writerFactory, fileFactory, io, TARGET_FILE_SIZE_IN_BYTES);
 
     PartitionKey partitionKey = new PartitionKey(partitionedSpec, table().schema());
     StructType deleteSparkType = SparkSchemaUtil.convert(table().schema());
@@ -317,16 +338,17 @@ public abstract class WritersBenchmark extends IcebergSourceBenchmark {
 
   @Benchmark
   @Threads(1)
-  public void writeUnpartitionedClusteredPositionDeleteWriter(Blackhole blackhole) throws IOException {
+  public void writeUnpartitionedClusteredPositionDeleteWriter(Blackhole blackhole)
+      throws IOException {
     FileIO io = table().io();
 
     OutputFileFactory fileFactory = newFileFactory();
-    SparkFileWriterFactory writerFactory = SparkFileWriterFactory.builderFor(table())
-        .dataFileFormat(fileFormat())
-        .build();
+    SparkFileWriterFactory writerFactory =
+        SparkFileWriterFactory.builderFor(table()).dataFileFormat(fileFormat()).build();
 
-    ClusteredPositionDeleteWriter<InternalRow> writer = new ClusteredPositionDeleteWriter<>(
-        writerFactory, fileFactory, io, TARGET_FILE_SIZE_IN_BYTES);
+    ClusteredPositionDeleteWriter<InternalRow> writer =
+        new ClusteredPositionDeleteWriter<>(
+            writerFactory, fileFactory, io, TARGET_FILE_SIZE_IN_BYTES);
 
     PositionDelete<InternalRow> positionDelete = PositionDelete.create();
     try (ClusteredPositionDeleteWriter<InternalRow> closeableWriter = writer) {
@@ -342,8 +364,6 @@ public abstract class WritersBenchmark extends IcebergSourceBenchmark {
   }
 
   private OutputFileFactory newFileFactory() {
-    return OutputFileFactory.builderFor(table(), 1, 1)
-        .format(fileFormat())
-        .build();
+    return OutputFileFactory.builderFor(table(), 1, 1).format(fileFormat()).build();
   }
 }

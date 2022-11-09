@@ -18,22 +18,19 @@
  */
 package org.apache.iceberg.flink.source.assigner;
 
-import org.apache.flink.annotation.Internal;
+import java.util.Collection;
+import org.apache.iceberg.flink.source.split.IcebergSourceSplitState;
 
-@Internal
-public enum SplitAssignerType {
-  SIMPLE {
-    @Override
-    public SplitAssignerFactory factory() {
-      return new SimpleSplitAssignerFactory();
-    }
-  },
-  LOCALITY {
-    @Override
-    public SplitAssignerFactory factory() {
-      return new LocalitySplitAssignerFactory();
-    }
-  };
+/** Create locality assigner that hands out splits with guarantee in locality. */
+public class LocalitySplitAssignerFactory implements SplitAssignerFactory {
 
-  public abstract SplitAssignerFactory factory();
+  @Override
+  public SplitAssigner createAssigner() {
+    return new LocalitySplitAssigner();
+  }
+
+  @Override
+  public SplitAssigner createAssigner(Collection<IcebergSourceSplitState> assignerState) {
+    return new LocalitySplitAssigner(assignerState);
+  }
 }

@@ -26,6 +26,8 @@ import org.apache.flink.table.api.config.ExecutionConfigOptions;
 import org.apache.hadoop.fs.Path;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.flink.FlinkConfigOptions;
+import org.apache.iceberg.flink.source.assigner.SplitAssignerFactory;
+import org.apache.iceberg.flink.source.assigner.SplitAssignerType;
 import org.apache.iceberg.hadoop.HadoopFileIO;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
@@ -66,6 +68,24 @@ class SourceUtil {
     }
 
     return false;
+  }
+
+  static SplitAssignerFactory assignerFactory(
+      ReadableConfig readableConfig, SplitAssignerFactory assignerFactory, Boolean exposeLocality) {
+    if (assignerFactory != null) {
+      return assignerFactory;
+    }
+
+    SplitAssignerType assignerType =
+        readableConfig.get(FlinkConfigOptions.TABLE_EXEC_SPLIT_ASSIGNER_TYPE);
+    if (assignerType != null) {
+      return assignerType.factory();
+    }
+
+    if (exposeLocality) {
+      return SplitAssignerType.LOCALITY.factory();
+    }
+    return SplitAssignerType.SIMPLE.factory();
   }
 
   /**

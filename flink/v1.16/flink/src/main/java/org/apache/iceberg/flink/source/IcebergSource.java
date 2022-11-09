@@ -413,6 +413,9 @@ public class IcebergSource<T> implements Source<T, IcebergSourceSplit, IcebergEn
         contextBuilder.project(FlinkSchemaUtil.convert(icebergSchema, projectedFlinkSchema));
       }
 
+      contextBuilder.exposeLocality(
+          SourceUtil.isLocalityEnabled(table, flinkConfig, exposeLocality));
+
       ScanContext context = contextBuilder.build();
       if (readerFunction == null) {
         if (table instanceof BaseMetadataTable) {
@@ -433,6 +436,9 @@ public class IcebergSource<T> implements Source<T, IcebergSourceSplit, IcebergEn
           this.readerFunction = (ReaderFunction<T>) rowDataReaderFunction;
         }
       }
+
+      splitAssignerFactory =
+          SourceUtil.assignerFactory(flinkConfig, splitAssignerFactory, context.exposeLocality());
 
       checkRequired();
       // Since builder already load the table, pass it to the source to avoid double loading

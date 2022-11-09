@@ -18,6 +18,8 @@
  */
 package org.apache.iceberg.flink.source.reader;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
@@ -27,11 +29,14 @@ import org.apache.flink.connector.base.source.reader.SingleThreadMultiplexSource
 import org.apache.iceberg.flink.source.split.IcebergSourceSplit;
 import org.apache.iceberg.flink.source.split.SplitRequestEvent;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Internal
 public class IcebergSourceReader<T>
     extends SingleThreadMultiplexSourceReaderBase<
         RecordAndPosition<T>, T, IcebergSourceSplit, IcebergSourceSplit> {
+  private static final Logger LOG = LoggerFactory.getLogger(IcebergSourceReader.class);
 
   public IcebergSourceReader(
       IcebergSourceReaderMetrics metrics,
@@ -69,6 +74,13 @@ public class IcebergSourceReader<T>
   }
 
   private void requestSplit(Collection<String> finishedSplitIds) {
-    context.sendSourceEventToCoordinator(new SplitRequestEvent(finishedSplitIds));
+    String hostname = null;
+    try {
+      hostname = InetAddress.getLocalHost().getHostName();
+    } catch (UnknownHostException e) {
+      LOG.warn("Can not get hostname.", e);
+    }
+
+    context.sendSourceEventToCoordinator(new SplitRequestEvent(finishedSplitIds, hostname));
   }
 }

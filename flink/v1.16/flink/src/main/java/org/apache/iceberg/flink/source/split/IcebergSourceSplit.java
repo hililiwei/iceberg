@@ -39,24 +39,37 @@ public class IcebergSourceSplit implements SourceSplit, Serializable {
 
   private int fileOffset;
   private long recordOffset;
+  private final String[] hostname;
 
   // The splits are frequently serialized into checkpoints.
   // Caching the byte representation makes repeated serialization cheap.
   @Nullable private transient byte[] serializedBytesCache;
 
-  private IcebergSourceSplit(CombinedScanTask task, int fileOffset, long recordOffset) {
+  private IcebergSourceSplit(
+      CombinedScanTask task, int fileOffset, long recordOffset, @Nullable String[] hostname) {
     this.task = task;
     this.fileOffset = fileOffset;
     this.recordOffset = recordOffset;
+    this.hostname = hostname;
   }
 
   public static IcebergSourceSplit fromCombinedScanTask(CombinedScanTask combinedScanTask) {
-    return fromCombinedScanTask(combinedScanTask, 0, 0L);
+    return fromCombinedScanTask(combinedScanTask, 0, 0L, null);
+  }
+
+  public static IcebergSourceSplit fromCombinedScanTask(
+      CombinedScanTask combinedScanTask, String[] hostname) {
+    return fromCombinedScanTask(combinedScanTask, 0, 0L, hostname);
   }
 
   public static IcebergSourceSplit fromCombinedScanTask(
       CombinedScanTask combinedScanTask, int fileOffset, long recordOffset) {
-    return new IcebergSourceSplit(combinedScanTask, fileOffset, recordOffset);
+    return new IcebergSourceSplit(combinedScanTask, fileOffset, recordOffset, null);
+  }
+
+  public static IcebergSourceSplit fromCombinedScanTask(
+      CombinedScanTask combinedScanTask, int fileOffset, long recordOffset, String[] hostname) {
+    return new IcebergSourceSplit(combinedScanTask, fileOffset, recordOffset, hostname);
   }
 
   public CombinedScanTask task() {
@@ -69,6 +82,10 @@ public class IcebergSourceSplit implements SourceSplit, Serializable {
 
   public long recordOffset() {
     return recordOffset;
+  }
+
+  public String[] hostname() {
+    return hostname;
   }
 
   @Override
@@ -89,6 +106,7 @@ public class IcebergSourceSplit implements SourceSplit, Serializable {
         .add("files", toString(task.files()))
         .add("fileOffset", fileOffset)
         .add("recordOffset", recordOffset)
+        .add("hostname", hostname)
         .toString();
   }
 

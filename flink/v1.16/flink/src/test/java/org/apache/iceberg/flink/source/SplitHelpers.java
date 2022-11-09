@@ -57,6 +57,12 @@ public class SplitHelpers {
    */
   public static List<IcebergSourceSplit> createSplitsFromTransientHadoopTable(
       TemporaryFolder temporaryFolder, int fileCount, int filesPerSplit) throws Exception {
+    return createSplitsFromTransientHadoopTable(temporaryFolder, fileCount, filesPerSplit, null);
+  }
+
+  public static List<IcebergSourceSplit> createSplitsFromTransientHadoopTable(
+      TemporaryFolder temporaryFolder, int fileCount, int filesPerSplit, String[] hostname)
+      throws Exception {
     final File warehouseFile = temporaryFolder.newFolder();
     Assert.assertTrue(warehouseFile.delete());
     final String warehouse = "file:" + warehouseFile;
@@ -84,7 +90,7 @@ public class SplitHelpers {
                     .map(files -> new BaseCombinedScanTask(files))
                     .map(
                         combinedScanTask ->
-                            IcebergSourceSplit.fromCombinedScanTask(combinedScanTask));
+                            IcebergSourceSplit.fromCombinedScanTask(combinedScanTask, hostname));
               })
           .collect(Collectors.toList());
     } finally {

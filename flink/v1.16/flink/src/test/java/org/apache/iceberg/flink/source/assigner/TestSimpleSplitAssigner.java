@@ -18,19 +18,14 @@
  */
 package org.apache.iceberg.flink.source.assigner;
 
-import java.util.Collection;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.iceberg.flink.source.SplitHelpers;
 import org.apache.iceberg.flink.source.split.IcebergSourceSplit;
-import org.apache.iceberg.flink.source.split.IcebergSourceSplitState;
-import org.junit.Assert;
 import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
-public class TestSimpleSplitAssigner {
+public class TestSimpleSplitAssigner extends TestSplitAssignerBase {
   @ClassRule public static final TemporaryFolder TEMPORARY_FOLDER = new TemporaryFolder();
 
   @Test
@@ -78,48 +73,5 @@ public class TestSimpleSplitAssigner {
     assertGetNext(assigner, GetSplitResult.Status.AVAILABLE);
     assertGetNext(assigner, GetSplitResult.Status.UNAVAILABLE);
     assertSnapshot(assigner, 0);
-  }
-
-  private void assertAvailableFuture(
-      SimpleSplitAssigner assigner, int splitCount, Runnable addSplitsRunnable) {
-    // register callback
-    AtomicBoolean futureCompleted = new AtomicBoolean();
-    CompletableFuture<Void> future = assigner.isAvailable();
-    future.thenAccept(ignored -> futureCompleted.set(true));
-    // calling isAvailable again should return the same object reference
-    // note that thenAccept will return a new future.
-    // we want to assert the same instance on the assigner returned future
-    Assert.assertSame(future, assigner.isAvailable());
-
-    // now add some splits
-    addSplitsRunnable.run();
-    Assert.assertEquals(true, futureCompleted.get());
-
-    for (int i = 0; i < splitCount; ++i) {
-      assertGetNext(assigner, GetSplitResult.Status.AVAILABLE);
-    }
-    assertGetNext(assigner, GetSplitResult.Status.UNAVAILABLE);
-    assertSnapshot(assigner, 0);
-  }
-
-  private void assertGetNext(SimpleSplitAssigner assigner, GetSplitResult.Status expectedStatus) {
-    GetSplitResult result = assigner.getNext(null);
-    Assert.assertEquals(expectedStatus, result.status());
-    switch (expectedStatus) {
-      case AVAILABLE:
-        Assert.assertNotNull(result.split());
-        break;
-      case CONSTRAINED:
-      case UNAVAILABLE:
-        Assert.assertNull(result.split());
-        break;
-      default:
-        Assert.fail("Unknown status: " + expectedStatus);
-    }
-  }
-
-  private void assertSnapshot(SimpleSplitAssigner assigner, int splitCount) {
-    Collection<IcebergSourceSplitState> stateBeforeGet = assigner.state();
-    Assert.assertEquals(splitCount, stateBeforeGet.size());
   }
 }

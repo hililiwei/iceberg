@@ -387,7 +387,9 @@ public class IcebergSource<T> implements Source<T, IcebergSourceSplit, IcebergEn
     }
 
     public Builder<T> exposeLocality(boolean newExposeLocality) {
-      this.exposeLocality = newExposeLocality;
+      readOptions.put(
+          FlinkConfigOptions.TABLE_EXEC_ICEBERG_EXPOSE_SPLIT_LOCALITY_INFO.key(),
+          Boolean.toString(newExposeLocality));
       return this;
     }
 
@@ -453,6 +455,9 @@ public class IcebergSource<T> implements Source<T, IcebergSourceSplit, IcebergEn
           this.readerFunction = (ReaderFunction<T>) rowDataReaderFunction;
         }
       }
+
+      splitAssignerFactory =
+          SourceUtil.createAssignerFactory(flinkConfig, splitAssignerFactory, context.exposeLocality());
 
       checkRequired();
       // Since builder already load the table, pass it to the source to avoid double loading

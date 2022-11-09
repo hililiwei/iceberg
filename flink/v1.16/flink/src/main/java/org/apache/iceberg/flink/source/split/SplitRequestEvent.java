@@ -32,7 +32,7 @@ public class SplitRequestEvent implements SourceEvent {
   private final String requesterHostname;
 
   public SplitRequestEvent() {
-    this(Collections.emptyList());
+    this(Collections.emptyList(), null);
   }
 
   public SplitRequestEvent(Collection<String> finishedSplitIds) {

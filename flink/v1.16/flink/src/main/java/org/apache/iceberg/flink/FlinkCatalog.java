@@ -55,6 +55,7 @@ import org.apache.iceberg.CachingCatalog;
 import org.apache.iceberg.DataFile;
 import org.apache.iceberg.EnvironmentContext;
 import org.apache.iceberg.FileScanTask;
+import org.apache.iceberg.MetadataTableType;
 import org.apache.iceberg.PartitionField;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
@@ -73,6 +74,7 @@ import org.apache.iceberg.flink.util.FlinkCompatibilityUtil;
 import org.apache.iceberg.flink.util.FlinkPackage;
 import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
+import org.apache.iceberg.relocated.com.google.common.base.Splitter;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableList;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableMap;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
@@ -157,6 +159,17 @@ public class FlinkCatalog extends AbstractCatalog {
   }
 
   TableIdentifier toIdentifier(ObjectPath path) {
+    String objectName = path.getObjectName();
+    List<String> tableName = Splitter.on('$').splitToList(objectName);
+    if (tableName.size() > 1 && MetadataTableType.from(tableName.get(1)) != null) {
+      return TableIdentifier.parse(
+          toNamespace(path.getDatabaseName()).toString()
+              + "."
+              + tableName.get(0)
+              + "."
+              + tableName.get(1));
+    }
+
     return TableIdentifier.of(toNamespace(path.getDatabaseName()), path.getObjectName());
   }
 

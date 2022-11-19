@@ -39,6 +39,7 @@ import org.apache.flink.core.io.SimpleVersionedSerializer;
 import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.util.Preconditions;
+import org.apache.iceberg.BaseMetadataTable;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.expressions.Expression;
@@ -54,6 +55,7 @@ import org.apache.iceberg.flink.source.enumerator.IcebergEnumeratorStateSerializ
 import org.apache.iceberg.flink.source.enumerator.StaticIcebergEnumerator;
 import org.apache.iceberg.flink.source.reader.IcebergSourceReader;
 import org.apache.iceberg.flink.source.reader.IcebergSourceReaderMetrics;
+import org.apache.iceberg.flink.source.reader.MetaDataReaderFunction;
 import org.apache.iceberg.flink.source.reader.ReaderFunction;
 import org.apache.iceberg.flink.source.reader.RowDataReaderFunction;
 import org.apache.iceberg.flink.source.split.IcebergSourceSplit;
@@ -355,16 +357,23 @@ public class IcebergSource<T> implements Source<T, IcebergSourceSplit, IcebergEn
 
       ScanContext context = contextBuilder.build();
       if (readerFunction == null) {
-        RowDataReaderFunction rowDataReaderFunction =
-            new RowDataReaderFunction(
-                flinkConfig,
-                table.schema(),
-                context.project(),
-                context.nameMapping(),
-                context.caseSensitive(),
-                table.io(),
-                table.encryption());
-        this.readerFunction = (ReaderFunction<T>) rowDataReaderFunction;
+        if (table instanceof BaseMetadataTable) {
+          MetaDataReaderFunction rowDataReaderFunction =
+              new MetaDataReaderFunction(
+                  flinkConfig, table.schema(), context.project(), table.io(), table.encryption());
+          this.readerFunction = (ReaderFunction<T>) rowDataReaderFunction;
+        } else {
+          RowDataReaderFunction rowDataReaderFunction =
+              new RowDataReaderFunction(
+                  flinkConfig,
+                  table.schema(),
+                  context.project(),
+                  context.nameMapping(),
+                  context.caseSensitive(),
+                  table.io(),
+                  table.encryption());
+          this.readerFunction = (ReaderFunction<T>) rowDataReaderFunction;
+        }
       }
 
       checkRequired();

@@ -105,6 +105,9 @@ public class TestFlinkMetaDataTable extends FlinkCatalogTestBase {
     sql(
         "INSERT INTO %s VALUES (1,'iceberg',10),(2,'b',20),(3,CAST(NULL AS VARCHAR),30)",
         TABLE_NAME);
+    sql(
+            "INSERT INTO %s VALUES (4,'iceberg',10)",
+            TABLE_NAME);
     String sql = String.format("SELECT * FROM %s$snapshots ", TABLE_NAME);
     List<Row> result = sql(sql);
 

@@ -18,6 +18,7 @@
  */
 package org.apache.iceberg.flink.source.reader;
 
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.table.data.RowData;
 import org.apache.iceberg.Schema;
@@ -29,6 +30,9 @@ import org.apache.iceberg.flink.source.split.IcebergSourceSplit;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 
+
+/** Reading metadata tables (like snapshots, manifests, etc.) */
+@Internal
 public class MetaDataReaderFunction extends DataIteratorReaderFunction<RowData> {
   private final Schema readSchema;
   private final FileIO io;

@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.data.ArrayData;
 import org.apache.flink.table.data.DecimalData;
 import org.apache.flink.table.data.GenericArrayData;
@@ -49,6 +50,7 @@ import org.apache.iceberg.types.Type;
 import org.apache.iceberg.types.Types;
 import org.apache.iceberg.util.ByteBuffers;
 
+@Internal
 public class StructRowData implements RowData {
   private final Types.StructType type;
   private RowKind kind;
@@ -234,9 +236,9 @@ public class StructRowData implements RowData {
     return isNullAt(pos) ? null : getStructRowData(pos, numFields);
   }
 
-  private StructRowData getStructRowData(int ordinal, int numFields) {
+  private StructRowData getStructRowData(int pos, int numFields) {
     return new StructRowData(
-        type.fields().get(ordinal).type().asStructType(), struct.get(ordinal, StructLike.class));
+        type.fields().get(pos).type().asStructType(), struct.get(pos, StructLike.class));
   }
 
   private MapData mapToMapData(Types.MapType mapType, Map<?, ?> map) {

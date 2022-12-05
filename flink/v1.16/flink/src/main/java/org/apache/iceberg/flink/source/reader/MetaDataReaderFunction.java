@@ -30,7 +30,6 @@ import org.apache.iceberg.flink.source.split.IcebergSourceSplit;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 
-
 /** Reading metadata tables (like snapshots, manifests, etc.) */
 @Internal
 public class MetaDataReaderFunction extends DataIteratorReaderFunction<RowData> {

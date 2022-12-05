@@ -36,12 +36,14 @@ import org.apache.iceberg.DeleteFile;
 import org.apache.iceberg.FileContent;
 import org.apache.iceberg.FileFormat;
 import org.apache.iceberg.Files;
+import org.apache.iceberg.HasTableOperations;
 import org.apache.iceberg.ManifestFile;
 import org.apache.iceberg.MetadataTableType;
 import org.apache.iceberg.MetadataTableUtils;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.Snapshot;
 import org.apache.iceberg.Table;
+import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.avro.Avro;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
@@ -50,7 +52,6 @@ import org.apache.iceberg.data.GenericRecord;
 import org.apache.iceberg.data.Record;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.flink.FlinkCatalogTestBase;
-import org.apache.iceberg.flink.FlinkConfigOptions;
 import org.apache.iceberg.flink.TestHelpers;
 import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.io.InputFile;
@@ -59,34 +60,67 @@ import org.apache.iceberg.relocated.com.google.common.collect.Maps;
 import org.apache.iceberg.util.SnapshotUtil;
 import org.junit.After;
 import org.junit.Assert;
+import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 
+@RunWith(Parameterized.class)
 public class TestFlinkMetaDataTable extends FlinkCatalogTestBase {
-
   private static final String TABLE_NAME = "test_table";
   private final FileFormat format = FileFormat.AVRO;
-  private static TemporaryFolder temp = new TemporaryFolder();
+  private static final TemporaryFolder TEMP = new TemporaryFolder();
+  private final boolean isPartition;
 
-  public TestFlinkMetaDataTable(String catalogName, Namespace baseNamespace) {
+  public TestFlinkMetaDataTable(String catalogName, Namespace baseNamespace, Boolean isPartition) {
     super(catalogName, baseNamespace);
+    this.isPartition = isPartition;
+  }
+
+  @Parameterized.Parameters(name = "catalogName={0}, baseNamespace={1}, isPartition={2}")
+  public static Iterable<Object[]> parameters() {
+    List<Object[]> parameters = Lists.newArrayList();
+
+    for (Boolean isPartition : new Boolean[] {true, false}) {
+      String catalogName = "testhadoop";
+      Namespace baseNamespace = Namespace.of("default");
+      parameters.add(new Object[] {catalogName, baseNamespace, isPartition});
+    }
+    return parameters;
   }
 
   @Override
   protected TableEnvironment getTableEnv() {
     Configuration configuration = super.getTableEnv().getConfig().getConfiguration();
     configuration.set(CoreOptions.DEFAULT_PARALLELISM, 1);
-    configuration.set(FlinkConfigOptions.TABLE_EXEC_ICEBERG_USE_FLIP27_SOURCE, true);
     return super.getTableEnv();
   }
 
   @Before
   public void before() {
     super.before();
-    sql("CREATE DATABASE %s", flinkDatabase);
     sql("USE CATALOG %s", catalogName);
+    sql("CREATE DATABASE %s", flinkDatabase);
     sql("USE %s", DATABASE);
+    if (isPartition) {
+      sql(
+          "CREATE TABLE %s (id INT, data VARCHAR,d DOUBLE) PARTITIONED BY (data) WITH ('format-version'='2', 'write.format.default'='%s')",
+          TABLE_NAME, format.name());
+
+      sql("INSERT INTO %s VALUES (1,'a',10),(2,'a',20)", TABLE_NAME);
+
+      sql("INSERT INTO %s VALUES (1,'b',10),(2,'b',20)", TABLE_NAME);
+    } else {
+      sql(
+          "CREATE TABLE %s (id INT, data VARCHAR,d DOUBLE) WITH ('format-version'='2', 'write.format.default'='%s')",
+          TABLE_NAME, format.name());
+      sql(
+          "INSERT INTO %s VALUES (1,'iceberg',10),(2,'b',20),(3,CAST(NULL AS VARCHAR),30)",
+          TABLE_NAME);
+      sql("INSERT INTO %s VALUES (4,'iceberg',10)", TABLE_NAME);
+    }
   }
 
   @Override
@@ -99,15 +133,6 @@ public class TestFlinkMetaDataTable extends FlinkCatalogTestBase {
 
   @Test
   public void testSnapshots() {
-    sql(
-        "CREATE TABLE %s (id INT, data VARCHAR,d DOUBLE) WITH ('format-version'='2', 'write.format.default'='%s')",
-        TABLE_NAME, format.name());
-    sql(
-        "INSERT INTO %s VALUES (1,'iceberg',10),(2,'b',20),(3,CAST(NULL AS VARCHAR),30)",
-        TABLE_NAME);
-    sql(
-            "INSERT INTO %s VALUES (4,'iceberg',10)",
-            TABLE_NAME);
     String sql = String.format("SELECT * FROM %s$snapshots ", TABLE_NAME);
     List<Row> result = sql(sql);
 
@@ -119,25 +144,23 @@ public class TestFlinkMetaDataTable extends FlinkCatalogTestBase {
           "Should have expected timestamp",
           ((Instant) row.getField(0)).toEpochMilli(),
           next.timestampMillis());
-      Assert.assertEquals("Should have expected snapshot id", row.getField(1), next.snapshotId());
-      Assert.assertEquals("Should have expected parent id", row.getField(2), next.parentId());
-      Assert.assertEquals("Should have expected operation", row.getField(3), next.operation());
+      Assert.assertEquals("Should have expected snapshot id", next.snapshotId(), row.getField(1));
+      Assert.assertEquals("Should have expected parent id", next.parentId(), row.getField(2));
+      Assert.assertEquals("Should have expected operation", next.operation(), row.getField(3));
       Assert.assertEquals(
           "Should have expected manifest list location",
           row.getField(4),
           next.manifestListLocation());
-      Assert.assertEquals("Should have expected summary", row.getField(5), next.summary());
+      Assert.assertEquals("Should have expected summary", next.summary(), row.getField(5));
     }
+
+    sql = String.format("SELECT summary['flink.job-id'] FROM %s$snapshots ", TABLE_NAME);
+    result = sql(sql);
+    System.out.println(result.size());
   }
 
   @Test
   public void testHistory() {
-    sql(
-        "CREATE TABLE %s (id INT, data VARCHAR,d DOUBLE) WITH ('format-version'='2', 'write.format.default'='%s')",
-        TABLE_NAME, format.name());
-    sql(
-        "INSERT INTO %s VALUES (1,'iceberg',10),(2,'b',20),(3,CAST(NULL AS VARCHAR),30)",
-        TABLE_NAME);
     String sql = String.format("SELECT * FROM %s$history ", TABLE_NAME);
     List<Row> result = sql(sql);
 
@@ -149,24 +172,18 @@ public class TestFlinkMetaDataTable extends FlinkCatalogTestBase {
           "Should have expected made_current_at",
           ((Instant) row.getField(0)).toEpochMilli(),
           next.timestampMillis());
-      Assert.assertEquals("Should have expected snapshot id", row.getField(1), next.snapshotId());
-      Assert.assertEquals("Should have expected parent id", row.getField(2), next.parentId());
+      Assert.assertEquals("Should have expected snapshot id", next.snapshotId(), row.getField(1));
+      Assert.assertEquals("Should have expected parent id", next.parentId(), row.getField(2));
+
       Assert.assertEquals(
           "Should have expected is current ancestor",
-          row.getField(3),
-          SnapshotUtil.isAncestorOf(
-              table, next.snapshotId(), table.currentSnapshot().snapshotId()));
+          SnapshotUtil.isAncestorOf(table, table.currentSnapshot().snapshotId(), next.snapshotId()),
+          row.getField(3));
     }
   }
 
   @Test
   public void testManifests() {
-    sql(
-        "CREATE TABLE %s (id INT, data VARCHAR,d DOUBLE) WITH ('format-version'='2', 'write.format.default'='%s')",
-        TABLE_NAME, format.name());
-    sql(
-        "INSERT INTO %s VALUES (1,'iceberg',10),(2,'b',20),(3,CAST(NULL AS VARCHAR),30)",
-        TABLE_NAME);
     String sql = String.format("SELECT * FROM %s$manifests ", TABLE_NAME);
     List<Row> result = sql(sql);
 
@@ -177,96 +194,87 @@ public class TestFlinkMetaDataTable extends FlinkCatalogTestBase {
       Row row = result.get(i);
       ManifestFile manifestFile = expectedDataManifests.get(i);
       Assert.assertEquals(
-          "Should have expected content", row.getField(0), manifestFile.content().id());
-      Assert.assertEquals("Should have expected path", row.getField(1), manifestFile.path());
-      Assert.assertEquals("Should have expected length", row.getField(2), manifestFile.length());
+          "Should have expected content", manifestFile.content().id(), row.getField(0));
+      Assert.assertEquals("Should have expected path", manifestFile.path(), row.getField(1));
+      Assert.assertEquals("Should have expected length", manifestFile.length(), row.getField(2));
       Assert.assertEquals(
           "Should have expected partition_spec_id",
-          row.getField(3),
-          manifestFile.partitionSpecId());
+          manifestFile.partitionSpecId(),
+          row.getField(3));
       Assert.assertEquals(
-          "Should have expected added_snapshot_id", row.getField(4), manifestFile.snapshotId());
+          "Should have expected added_snapshot_id", manifestFile.snapshotId(), row.getField(4));
       Assert.assertEquals(
           "Should have expected added_data_files_count",
-          row.getField(5),
-          manifestFile.addedFilesCount());
+          manifestFile.addedFilesCount(),
+          row.getField(5));
       Assert.assertEquals(
           "Should have expected existing_data_files_count",
-          row.getField(6),
-          manifestFile.existingFilesCount());
+          manifestFile.existingFilesCount(),
+          row.getField(6));
       Assert.assertEquals(
           "Should have expected deleted_data_files_count",
-          row.getField(7),
-          manifestFile.deletedFilesCount());
+          manifestFile.deletedFilesCount(),
+          row.getField(7));
     }
   }
 
   @Test
   public void testAllManifests() {
-    sql(
-        "CREATE TABLE %s (id INT, data VARCHAR,d DOUBLE) WITH ('format-version'='2', 'write.format.default'='%s')",
-        TABLE_NAME, format.name());
-    sql(
-        "INSERT INTO %s VALUES (1,'iceberg',10),(2,'b',20),(3,CAST(NULL AS VARCHAR),30)",
-        TABLE_NAME);
+    Table table = validationCatalog.loadTable(TableIdentifier.of(icebergNamespace, TABLE_NAME));
+
     String sql = String.format("SELECT * FROM %s$all_manifests ", TABLE_NAME);
     List<Row> result = sql(sql);
 
-    Table table = validationCatalog.loadTable(TableIdentifier.of(icebergNamespace, TABLE_NAME));
-    List<ManifestFile> expectedDataManifests = dataManifests(table);
+    List<ManifestFile> expectedDataManifests = allDataManifests(table);
 
+    Assert.assertEquals(expectedDataManifests.size(), result.size());
     for (int i = 0; i < result.size(); i++) {
       Row row = result.get(i);
       ManifestFile manifestFile = expectedDataManifests.get(i);
       Assert.assertEquals(
-          "Should have expected content", row.getField(0), manifestFile.content().id());
-      Assert.assertEquals("Should have expected path", row.getField(1), manifestFile.path());
-      Assert.assertEquals("Should have expected length", row.getField(2), manifestFile.length());
+          "Should have expected content", manifestFile.content().id(), row.getField(0));
+      Assert.assertEquals("Should have expected path", manifestFile.path(), row.getField(1));
+      Assert.assertEquals("Should have expected length", manifestFile.length(), row.getField(2));
       Assert.assertEquals(
           "Should have expected partition_spec_id",
-          row.getField(3),
-          manifestFile.partitionSpecId());
+          manifestFile.partitionSpecId(),
+          row.getField(3));
       Assert.assertEquals(
-          "Should have expected added_snapshot_id", row.getField(4), manifestFile.snapshotId());
+          "Should have expected added_snapshot_id", manifestFile.snapshotId(), row.getField(4));
       Assert.assertEquals(
           "Should have expected added_data_files_count",
-          row.getField(5),
-          manifestFile.addedFilesCount());
+          manifestFile.addedFilesCount(),
+          row.getField(5));
       Assert.assertEquals(
           "Should have expected existing_data_files_count",
-          row.getField(6),
-          manifestFile.existingFilesCount());
+          manifestFile.existingFilesCount(),
+          row.getField(6));
       Assert.assertEquals(
           "Should have expected deleted_data_files_count",
-          row.getField(7),
-          manifestFile.deletedFilesCount());
+          manifestFile.deletedFilesCount(),
+          row.getField(7));
     }
   }
 
   @Test
   public void testUnPartitionedTable() throws IOException {
-    sql(
-        "CREATE TABLE %s (id INT, data VARCHAR,d DOUBLE) WITH ('format-version'='2', 'write.format.default'='%s')",
-        TABLE_NAME, format.name());
-    sql(
-        "INSERT INTO %s VALUES (1,'iceberg',10),(2,'b',20),(3,CAST(NULL AS VARCHAR),30)",
-        TABLE_NAME);
+    Assume.assumeFalse(isPartition);
     Table table = validationCatalog.loadTable(TableIdentifier.of(icebergNamespace, TABLE_NAME));
 
     Schema deleteRowSchema = table.schema().select("id");
     Record dataDelete = GenericRecord.create(deleteRowSchema);
     List<Record> dataDeletes = Lists.newArrayList(dataDelete.copy("id", 1));
 
-    temp.create();
+    TEMP.create();
     DeleteFile eqDeletes =
         FileHelpers.writeDeleteFile(
-            table, Files.localOutput(temp.newFile()), dataDeletes, deleteRowSchema);
+            table, Files.localOutput(TEMP.newFile()), dataDeletes, deleteRowSchema);
     table.newRowDelta().addDeletes(eqDeletes).commit();
 
     List<ManifestFile> expectedDataManifests = dataManifests(table);
     List<ManifestFile> expectedDeleteManifests = deleteManifests(table);
 
-    Assert.assertEquals("Should have 1 data manifest", 1, expectedDataManifests.size());
+    Assert.assertEquals("Should have 2 data manifest", 2, expectedDataManifests.size());
     Assert.assertEquals("Should have 1 delete manifest", 1, expectedDeleteManifests.size());
 
     Schema entriesTableSchema =
@@ -283,52 +291,45 @@ public class TestFlinkMetaDataTable extends FlinkCatalogTestBase {
     Schema deleteFilesTableSchema = deleteFilesTable.schema();
 
     List<Row> actualDeleteFiles = sql("SELECT * FROM %s$delete_files", TABLE_NAME);
-    Assert.assertEquals(
-        "Metadata table should return one delete file", 1, actualDeleteFiles.size());
+    Assert.assertEquals("Metadata table should return 1 delete file", 1, actualDeleteFiles.size());
 
     List<GenericData.Record> expectedDeleteFiles =
         expectedEntries(
             table, FileContent.EQUALITY_DELETES, entriesTableSchema, expectedDeleteManifests, null);
-    Assert.assertEquals("Should be one delete file manifest entry", 1, expectedDeleteFiles.size());
+    Assert.assertEquals("Should be 1 delete file manifest entry", 1, expectedDeleteFiles.size());
     TestHelpers.assertEqualsSafe(
         deleteFilesTableSchema, expectedDeleteFiles.get(0), actualDeleteFiles.get(0));
 
     // Check data files table
     List<Row> actualDataFiles = sql("SELECT * FROM %s$data_files", TABLE_NAME);
-    Assert.assertEquals("Metadata table should return one data file", 1, actualDataFiles.size());
+    Assert.assertEquals("Metadata table should return 2 data file", 2, actualDataFiles.size());
 
     List<GenericData.Record> expectedDataFiles =
         expectedEntries(table, FileContent.DATA, entriesTableSchema, expectedDataManifests, null);
-    Assert.assertEquals("Should be one data file manifest entry", 1, expectedDataFiles.size());
+    Assert.assertEquals("Should be 2 data file manifest entry", 2, expectedDataFiles.size());
     TestHelpers.assertEqualsSafe(
         filesTableSchema, expectedDataFiles.get(0), actualDataFiles.get(0));
 
     // check all files table
     List<Row> actualFiles = sql("SELECT * FROM %s$files ORDER BY content", TABLE_NAME);
-    Assert.assertEquals("Metadata table should return two files", 2, actualFiles.size());
+    Assert.assertEquals("Metadata table should return 3 files", 3, actualFiles.size());
 
     List<GenericData.Record> expectedFiles =
         Stream.concat(expectedDataFiles.stream(), expectedDeleteFiles.stream())
             .collect(Collectors.toList());
-    Assert.assertEquals("Should have two files manifest entries", 2, expectedFiles.size());
+    Assert.assertEquals("Should have 3 files manifest entries", 3, expectedFiles.size());
     TestHelpers.assertEqualsSafe(filesTableSchema, expectedFiles.get(0), actualFiles.get(0));
     TestHelpers.assertEqualsSafe(filesTableSchema, expectedFiles.get(1), actualFiles.get(1));
   }
 
   @Test
   public void testPartitionedTable() throws Exception {
-    sql(
-        "CREATE TABLE %s (id INT, data VARCHAR,d DOUBLE) PARTITIONED BY (data) WITH ('format-version'='2', 'write.format.default'='%s')",
-        TABLE_NAME, format.name());
-
-    sql("INSERT INTO %s VALUES (1,'a',10),(2,'a',20)", TABLE_NAME);
-
-    sql("INSERT INTO %s VALUES (1,'b',10),(2,'b',20)", TABLE_NAME);
+    Assume.assumeFalse(!isPartition);
     Table table = validationCatalog.loadTable(TableIdentifier.of(icebergNamespace, TABLE_NAME));
 
     Schema deleteRowSchema = table.schema().select("id", "data");
     Record dataDelete = GenericRecord.create(deleteRowSchema);
-    temp.create();
+    TEMP.create();
 
     Map<String, Object> deleteRow = Maps.newHashMap();
     deleteRow.put("id", 1);
@@ -336,7 +337,7 @@ public class TestFlinkMetaDataTable extends FlinkCatalogTestBase {
     DeleteFile eqDeletes =
         FileHelpers.writeDeleteFile(
             table,
-            Files.localOutput(temp.newFile()),
+            Files.localOutput(TEMP.newFile()),
             org.apache.iceberg.TestHelpers.Row.of("a"),
             Lists.newArrayList(dataDelete.copy(deleteRow)),
             deleteRowSchema);
@@ -346,7 +347,7 @@ public class TestFlinkMetaDataTable extends FlinkCatalogTestBase {
     DeleteFile eqDeletes2 =
         FileHelpers.writeDeleteFile(
             table,
-            Files.localOutput(temp.newFile()),
+            Files.localOutput(TEMP.newFile()),
             org.apache.iceberg.TestHelpers.Row.of("b"),
             Lists.newArrayList(dataDelete.copy(deleteRow)),
             deleteRowSchema);
@@ -420,30 +421,25 @@ public class TestFlinkMetaDataTable extends FlinkCatalogTestBase {
 
   @Test
   public void testAllFilesUnpartitioned() throws Exception {
-    sql(
-        "CREATE TABLE %s (id INT, data VARCHAR,d DOUBLE) WITH ('format-version'='2', 'write.format.default'='%s')",
-        TABLE_NAME, format.name());
-
-    sql("INSERT INTO %s VALUES (1,'a',10),(2,'b',20),(3,'c',30),(4,'d',40)", TABLE_NAME);
-
+    Assume.assumeFalse(isPartition);
     Table table = validationCatalog.loadTable(TableIdentifier.of(icebergNamespace, TABLE_NAME));
 
     Schema deleteRowSchema = table.schema().select("id", "data");
     Record dataDelete = GenericRecord.create(deleteRowSchema);
-    temp.create();
+    TEMP.create();
 
     Map<String, Object> deleteRow = Maps.newHashMap();
     deleteRow.put("id", 1);
     DeleteFile eqDeletes =
         FileHelpers.writeDeleteFile(
             table,
-            Files.localOutput(temp.newFile()),
+            Files.localOutput(TEMP.newFile()),
             Lists.newArrayList(dataDelete.copy(deleteRow)),
             deleteRowSchema);
     table.newRowDelta().addDeletes(eqDeletes).commit();
 
     List<ManifestFile> expectedDataManifests = dataManifests(table);
-    Assert.assertEquals("Should have 1 data manifest", 1, expectedDataManifests.size());
+    Assert.assertEquals("Should have 2 data manifest", 2, expectedDataManifests.size());
     List<ManifestFile> expectedDeleteManifests = deleteManifests(table);
     Assert.assertEquals("Should have 1 delete manifest", 1, expectedDeleteManifests.size());
 
@@ -459,14 +455,14 @@ public class TestFlinkMetaDataTable extends FlinkCatalogTestBase {
             .schema();
 
     // Check all data files table
-    List<Row> actualDataFiles = sql("SELECT * FROM %s$all_data_files", TABLE_NAME);
+    List<Row> actualDataFiles =
+        sql("SELECT * FROM %s$all_data_files order by record_count ", TABLE_NAME);
 
     List<GenericData.Record> expectedDataFiles =
         expectedEntries(table, FileContent.DATA, entriesTableSchema, expectedDataManifests, null);
-    Assert.assertEquals("Should be one data file manifest entry", 1, expectedDataFiles.size());
-    Assert.assertEquals("Metadata table should return one data file", 1, actualDataFiles.size());
-    TestHelpers.assertEqualsSafe(
-        filesTableSchema, expectedDataFiles.get(0), actualDataFiles.get(0));
+    Assert.assertEquals("Should be 2 data file manifest entry", 2, expectedDataFiles.size());
+    Assert.assertEquals("Metadata table should return 2 data file", 2, actualDataFiles.size());
+    TestHelpers.assertEqualsSafe(filesTableSchema, expectedDataFiles, actualDataFiles);
 
     // Check all delete files table
     List<Row> actualDeleteFiles = sql("SELECT * FROM %s$all_delete_files", TABLE_NAME);
@@ -484,39 +480,33 @@ public class TestFlinkMetaDataTable extends FlinkCatalogTestBase {
     List<GenericData.Record> expectedFiles =
         ListUtils.union(expectedDataFiles, expectedDeleteFiles);
     expectedFiles.sort(Comparator.comparing(r -> ((Integer) r.get("content"))));
-    Assert.assertEquals("Metadata table should return two files", 2, actualFiles.size());
+    Assert.assertEquals("Metadata table should return 3 files", 3, actualFiles.size());
     TestHelpers.assertEqualsSafe(filesTableSchema, expectedFiles, actualFiles);
   }
 
   @Test
   public void testAllFilesPartitioned() throws Exception {
-    sql(
-        "CREATE TABLE %s (id INT, data VARCHAR,d DOUBLE) PARTITIONED BY (data) WITH ('format-version'='2', 'write.format.default'='%s')",
-        TABLE_NAME, format.name());
-
-    sql("INSERT INTO %s VALUES (1,'a',10),(2,'a',20)", TABLE_NAME);
-
-    sql("INSERT INTO %s VALUES (1,'b',10),(2,'b',20)", TABLE_NAME);
+    Assume.assumeFalse(!isPartition);
     Table table = validationCatalog.loadTable(TableIdentifier.of(icebergNamespace, TABLE_NAME));
 
     // Create delete file
     Schema deleteRowSchema = table.schema().select("id");
     Record dataDelete = GenericRecord.create(deleteRowSchema);
-    temp.create();
+    TEMP.create();
 
     Map<String, Object> deleteRow = Maps.newHashMap();
     deleteRow.put("id", 1);
     DeleteFile eqDeletes =
         FileHelpers.writeDeleteFile(
             table,
-            Files.localOutput(temp.newFile()),
+            Files.localOutput(TEMP.newFile()),
             org.apache.iceberg.TestHelpers.Row.of("a"),
             Lists.newArrayList(dataDelete.copy(deleteRow)),
             deleteRowSchema);
     DeleteFile eqDeletes2 =
         FileHelpers.writeDeleteFile(
             table,
-            Files.localOutput(temp.newFile()),
+            Files.localOutput(TEMP.newFile()),
             org.apache.iceberg.TestHelpers.Row.of("b"),
             Lists.newArrayList(dataDelete.copy(deleteRow)),
             deleteRowSchema);
@@ -571,14 +561,86 @@ public class TestFlinkMetaDataTable extends FlinkCatalogTestBase {
   }
 
   @Test
-  public void testSnapshotReferencesMetatable() throws Exception {
-    sql(
-        "CREATE TABLE %s (id INT, data VARCHAR,d DOUBLE) PARTITIONED BY (data) WITH ('format-version'='2', 'write.format.default'='%s')",
-        TABLE_NAME, format.name());
+  public void testMetadataLogEntries() {
+    Table table = validationCatalog.loadTable(TableIdentifier.of(icebergNamespace, TABLE_NAME));
 
-    sql("INSERT INTO %s VALUES (1,'a',10),(2,'a',20)", TABLE_NAME);
+    Long currentSnapshotId = table.currentSnapshot().snapshotId();
+    TableMetadata tableMetadata = ((HasTableOperations) table).operations().current();
+    Snapshot currentSnapshot = tableMetadata.currentSnapshot();
+    Snapshot parentSnapshot = table.snapshot(currentSnapshot.parentId());
+    List<TableMetadata.MetadataLogEntry> metadataLogEntries =
+        Lists.newArrayList(tableMetadata.previousFiles());
 
-    sql("INSERT INTO %s VALUES (1,'b',10),(2,'b',20)", TABLE_NAME);
+    // Check metadataLog table
+    List<Row> metadataLogs = sql("SELECT * FROM %s$metadata_log_entries", TABLE_NAME);
+
+    Assert.assertEquals("metadataLogEntries table should return 3 row", 3, metadataLogs.size());
+    Row metadataLog = metadataLogs.get(0);
+    Assert.assertEquals(
+        Instant.ofEpochMilli(metadataLogEntries.get(0).timestampMillis()),
+        metadataLog.getField("timestamp"));
+    Assert.assertEquals(metadataLogEntries.get(0).file(), metadataLog.getField("file"));
+    Assert.assertNull(metadataLog.getField("latest_snapshot_id"));
+    Assert.assertNull(metadataLog.getField("latest_schema_id"));
+    Assert.assertNull(metadataLog.getField("latest_sequence_number"));
+
+    metadataLog = metadataLogs.get(1);
+    Assert.assertEquals(
+        Instant.ofEpochMilli(metadataLogEntries.get(1).timestampMillis()),
+        metadataLog.getField("timestamp"));
+    Assert.assertEquals(metadataLogEntries.get(1).file(), metadataLog.getField("file"));
+    Assert.assertEquals(parentSnapshot.snapshotId(), metadataLog.getField("latest_snapshot_id"));
+    Assert.assertEquals(parentSnapshot.schemaId(), metadataLog.getField("latest_schema_id"));
+    Assert.assertEquals(
+        parentSnapshot.sequenceNumber(), metadataLog.getField("latest_sequence_number"));
+
+    metadataLog = metadataLogs.get(2);
+    Assert.assertEquals(
+        Instant.ofEpochMilli(currentSnapshot.timestampMillis()), metadataLog.getField("timestamp"));
+    Assert.assertEquals(tableMetadata.metadataFileLocation(), metadataLog.getField("file"));
+    Assert.assertEquals(currentSnapshot.snapshotId(), metadataLog.getField("latest_snapshot_id"));
+    Assert.assertEquals(currentSnapshot.schemaId(), metadataLog.getField("latest_schema_id"));
+    Assert.assertEquals(
+        currentSnapshot.sequenceNumber(), metadataLog.getField("latest_sequence_number"));
+
+    // test filtering
+    List<Row> metadataLogWithFilters =
+        sql(
+            "SELECT * FROM %s$metadata_log_entries WHERE latest_snapshot_id = %s",
+            TABLE_NAME, currentSnapshotId);
+    Assert.assertEquals(
+        "metadataLogEntries table should return 1 row", 1, metadataLogWithFilters.size());
+
+    metadataLog = metadataLogWithFilters.get(0);
+    Assert.assertEquals(
+        Instant.ofEpochMilli(tableMetadata.currentSnapshot().timestampMillis()),
+        metadataLog.getField("timestamp"));
+    Assert.assertEquals(tableMetadata.metadataFileLocation(), metadataLog.getField("file"));
+    Assert.assertEquals(
+        tableMetadata.currentSnapshot().snapshotId(), metadataLog.getField("latest_snapshot_id"));
+    Assert.assertEquals(
+        tableMetadata.currentSnapshot().schemaId(), metadataLog.getField("latest_schema_id"));
+    Assert.assertEquals(
+        tableMetadata.currentSnapshot().sequenceNumber(),
+        metadataLog.getField("latest_sequence_number"));
+
+    // test projection
+    List<String> metadataFiles =
+        metadataLogEntries.stream()
+            .map(TableMetadata.MetadataLogEntry::file)
+            .collect(Collectors.toList());
+    metadataFiles.add(tableMetadata.metadataFileLocation());
+    List<Row> metadataLogWithProjection =
+        sql("SELECT file FROM %s$metadata_log_entries", TABLE_NAME);
+    Assert.assertEquals(
+        "metadataLogEntries table should return 3 rows", 3, metadataLogWithProjection.size());
+    for (int i = 0; i < metadataFiles.size(); i++) {
+      Assert.assertEquals(metadataFiles.get(i), metadataLogWithProjection.get(i).getField("file"));
+    }
+  }
+
+  @Test
+  public void testSnapshotReferencesMetatable() {
     Table table = validationCatalog.loadTable(TableIdentifier.of(icebergNamespace, TABLE_NAME));
 
     Long currentSnapshotId = table.currentSnapshot().snapshotId();
@@ -708,6 +770,14 @@ public class TestFlinkMetaDataTable extends FlinkCatalogTestBase {
 
   private List<ManifestFile> dataManifests(Table table) {
     return table.currentSnapshot().dataManifests(table.io());
+  }
+
+  private List<ManifestFile> allDataManifests(Table table) {
+    List<ManifestFile> manifests = Lists.newArrayList();
+    for (Snapshot snapshot : table.snapshots()) {
+      manifests.addAll(snapshot.dataManifests(table.io()));
+    }
+    return manifests;
   }
 
   private List<ManifestFile> deleteManifests(Table table) {

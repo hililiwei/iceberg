@@ -189,7 +189,7 @@ public class StructRowData implements RowData {
 
   @Override
   public <T> RawValueData<T> getRawValue(int pos) {
-    return RawValueData.fromBytes(getBinary(pos));
+    throw new UnsupportedOperationException("Not supported yet.");
   }
 
   @Override
@@ -219,7 +219,7 @@ public class StructRowData implements RowData {
   private ArrayData getArrayInternal(int pos) {
     return collectionToArrayData(
         type.fields().get(pos).type().asListType().elementType(),
-        struct.get(pos, Collection.class));
+        struct.get(pos, List.class));
   }
 
   @Override
@@ -228,22 +228,10 @@ public class StructRowData implements RowData {
   }
 
   private MapData getMapInternal(int pos) {
-    return mapToMapData(type.fields().get(pos).type().asMapType(), struct.get(pos, Map.class));
-  }
-
-  @Override
-  public RowData getRow(int pos, int numFields) {
-    return isNullAt(pos) ? null : getStructRowData(pos, numFields);
-  }
-
-  private StructRowData getStructRowData(int pos, int numFields) {
-    return new StructRowData(
-        type.fields().get(pos).type().asStructType(), struct.get(pos, StructLike.class));
-  }
-
-  private MapData mapToMapData(Types.MapType mapType, Map<?, ?> map) {
+    Types.MapType mapType = type.fields().get(pos).type().asMapType();
     // make a defensive copy to ensure entries do not change
-    List<Map.Entry<?, ?>> entries = ImmutableList.copyOf(map.entrySet());
+    List<Map.Entry<?, ?>> entries =
+        ImmutableList.copyOf(((Map<?, ?>) struct.get(pos, Map.class)).entrySet());
 
     ArrayData keyArray =
         collectionToArrayData(mapType.keyType(), Lists.transform(entries, Map.Entry::getKey));
@@ -258,13 +246,23 @@ public class StructRowData implements RowData {
 
     int length = keyArray.size();
     Map<Object, Object> result = Maps.newHashMap();
-    for (int pos = 0; pos < length; pos++) {
-      final Object keyValue = keyGetter.getElementOrNull(keyArray, pos);
-      final Object valueValue = valueGetter.getElementOrNull(valueArray, pos);
+    for (int pos1 = 0; pos1 < length; pos1++) {
+      final Object keyValue = keyGetter.getElementOrNull(keyArray, pos1);
+      final Object valueValue = valueGetter.getElementOrNull(valueArray, pos1);
 
       result.put(keyValue, valueValue);
     }
     return new GenericMapData(result);
+  }
+
+  @Override
+  public RowData getRow(int pos, int numFields) {
+    return isNullAt(pos) ? null : getStructRowData(pos, numFields);
+  }
+
+  private StructRowData getStructRowData(int pos, int numFields) {
+    return new StructRowData(
+        type.fields().get(pos).type().asStructType(), struct.get(pos, StructLike.class));
   }
 
   private ArrayData collectionToArrayData(Type elementType, Collection<?> values) {

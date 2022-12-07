@@ -20,6 +20,7 @@ package org.apache.iceberg.flink;
 
 import java.util.List;
 import java.util.Set;
+import java.util.function.Supplier;
 import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.RowType;
@@ -104,9 +105,36 @@ public class FlinkSchemaUtil {
     Types.StructType struct = convert(flinkSchema).asStruct();
     // reassign ids to match the base schema
     Schema schema = TypeUtil.reassignIds(new Schema(struct.fields()), baseSchema);
+    // reassign doc to match the base schema
+    schema = reassignDoc(schema, baseSchema);
+
     // fix types that can't be represented in Flink (UUID)
     Schema fixedSchema = FlinkFixupTypes.fixup(schema, baseSchema);
     return freshIdentifierFieldIds(fixedSchema, flinkSchema);
+  }
+
+  private static Schema reassignDoc(Schema schema, Schema docSourceSchema) {
+    TypeUtil.CustomOrderSchemaVisitor<Type> visitor = new FlinkFixupDoc(docSourceSchema);
+    return new Schema(
+        visitor
+            .schema(schema, new VisitFuture<>(schema.asStruct(), visitor))
+            .asStructType()
+            .fields());
+  }
+
+  private static class VisitFuture<T> implements Supplier<T> {
+    private final Type type;
+    private final TypeUtil.CustomOrderSchemaVisitor<T> visitor;
+
+    private VisitFuture(Type type, TypeUtil.CustomOrderSchemaVisitor<T> visitor) {
+      this.type = type;
+      this.visitor = visitor;
+    }
+
+    @Override
+    public T get() {
+      return TypeUtil.visit(type, visitor);
+    }
   }
 
   /**

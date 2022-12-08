@@ -203,13 +203,13 @@ abstract class BaseFilesTable extends BaseMetadataTable {
     }
 
     private StructLike withReadableMetrics(ContentFile<?> file, int metricsPosition) {
-      int columnSize = projection.columns().size();
+      int columnCount = projection.columns().size();
       StructType projectedMetricType =
           projection.findField(MetricsUtil.READABLE_METRICS).type().asStructType();
       MetricsUtil.ReadableMetricsStruct readableMetrics =
           MetricsUtil.readableMetricsStruct(dataTableSchema, file, projectedMetricType);
       return new ContentFileStructWithMetrics(
-          columnSize, metricsPosition, (StructLike) file, readableMetrics);
+          columnCount, metricsPosition, (StructLike) file, readableMetrics);
     }
 
     @Override
@@ -226,23 +226,23 @@ abstract class BaseFilesTable extends BaseMetadataTable {
   static class ContentFileStructWithMetrics implements StructLike {
     private final StructLike fileAsStruct;
     private final MetricsUtil.ReadableMetricsStruct readableMetrics;
-    private final int columnSize;
+    private final int columnCount;
     private final int metricsPosition;
 
     ContentFileStructWithMetrics(
-        int columnSize,
+        int columnCount,
         int metricsPosition,
         StructLike fileAsStruct,
         MetricsUtil.ReadableMetricsStruct readableMetrics) {
       this.fileAsStruct = fileAsStruct;
       this.readableMetrics = readableMetrics;
-      this.columnSize = columnSize;
+      this.columnCount = columnCount;
       this.metricsPosition = metricsPosition;
     }
 
     @Override
     public int size() {
-      return columnSize;
+      return columnCount;
     }
 
     @Override

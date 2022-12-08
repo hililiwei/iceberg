@@ -21,12 +21,13 @@ package org.apache.iceberg.types;
 import java.util.List;
 import java.util.function.Supplier;
 import org.apache.iceberg.Schema;
+import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 
-public class ReassignDoc extends TypeUtil.CustomOrderSchemaVisitor<Type> {
+class ReassignDoc extends TypeUtil.CustomOrderSchemaVisitor<Type> {
   private final Schema docSourceSchema;
 
-  public ReassignDoc(Schema docSourceSchema) {
+  ReassignDoc(Schema docSourceSchema) {
     this.docSourceSchema = docSourceSchema;
   }
 
@@ -47,9 +48,7 @@ public class ReassignDoc extends TypeUtil.CustomOrderSchemaVisitor<Type> {
       int fieldId = field.fieldId();
       Types.NestedField docField = docSourceSchema.findField(fieldId);
 
-      if (docField == null) {
-        throw new IllegalArgumentException("Field " + fieldId + " not found in source schema");
-      }
+      Preconditions.checkNotNull(docField, "Field " + fieldId + " not found in source schema");
 
       if (field.isRequired()) {
         newFields.add(

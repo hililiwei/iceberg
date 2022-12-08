@@ -16,20 +16,17 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.iceberg.flink;
+package org.apache.iceberg.types;
 
 import java.util.List;
 import java.util.function.Supplier;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
-import org.apache.iceberg.types.Type;
-import org.apache.iceberg.types.TypeUtil;
-import org.apache.iceberg.types.Types;
 
-public class FlinkFixupDoc extends TypeUtil.CustomOrderSchemaVisitor<Type> {
+public class ReassignDoc extends TypeUtil.CustomOrderSchemaVisitor<Type> {
   private final Schema docSourceSchema;
 
-  public FlinkFixupDoc(Schema docSourceSchema) {
+  public ReassignDoc(Schema docSourceSchema) {
     this.docSourceSchema = docSourceSchema;
   }
 
@@ -49,6 +46,11 @@ public class FlinkFixupDoc extends TypeUtil.CustomOrderSchemaVisitor<Type> {
       Types.NestedField field = fields.get(i);
       int fieldId = field.fieldId();
       Types.NestedField docField = docSourceSchema.findField(fieldId);
+
+      if (docField == null) {
+        throw new IllegalArgumentException("Field " + fieldId + " not found in source schema");
+      }
+
       if (field.isRequired()) {
         newFields.add(
             Types.NestedField.required(fieldId, field.name(), types.get(i), docField.doc()));

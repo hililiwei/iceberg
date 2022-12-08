@@ -176,8 +176,7 @@ abstract class BaseFilesTable extends BaseMetadataTable {
         // used to create those columns are part of the file projection
         Set<Integer> readableMetricsIds = TypeUtil.getProjectedIds(readableMetricsField.type());
         Schema fileProjection = TypeUtil.selectNot(projection, readableMetricsIds);
-
-        int position = projection.columns().indexOf(readableMetricsField);
+        int metricsPosition = projection.columns().indexOf(readableMetricsField);
 
         Schema projectionForReadableMetrics =
             new Schema(
@@ -187,7 +186,7 @@ abstract class BaseFilesTable extends BaseMetadataTable {
 
         Schema projectionForMetrics = TypeUtil.join(fileProjection, projectionForReadableMetrics);
         return CloseableIterable.transform(
-            files(projectionForMetrics), f -> withReadableMetrics(f, position));
+            files(projectionForMetrics), f -> withReadableMetrics(f, metricsPosition));
       }
     }
 
@@ -203,12 +202,14 @@ abstract class BaseFilesTable extends BaseMetadataTable {
       }
     }
 
-    private StructLike withReadableMetrics(ContentFile<?> file, int position) {
+    private StructLike withReadableMetrics(ContentFile<?> file, int metricsPosition) {
+      int columnSize = projection.columns().size();
       StructType projectedMetricType =
           projection.findField(MetricsUtil.READABLE_METRICS).type().asStructType();
       MetricsUtil.ReadableMetricsStruct readableMetrics =
           MetricsUtil.readableMetricsStruct(dataTableSchema, file, projectedMetricType);
-      return new ContentFileStructWithMetrics(position, (StructLike) file, readableMetrics);
+      return new ContentFileStructWithMetrics(
+          columnSize, metricsPosition, (StructLike) file, readableMetrics);
     }
 
     @Override
@@ -225,25 +226,30 @@ abstract class BaseFilesTable extends BaseMetadataTable {
   static class ContentFileStructWithMetrics implements StructLike {
     private final StructLike fileAsStruct;
     private final MetricsUtil.ReadableMetricsStruct readableMetrics;
-    private final int position;
+    private final int columnSize;
+    private final int metricsPosition;
 
     ContentFileStructWithMetrics(
-        int position, StructLike fileAsStruct, MetricsUtil.ReadableMetricsStruct readableMetrics) {
+        int columnSize,
+        int metricsPosition,
+        StructLike fileAsStruct,
+        MetricsUtil.ReadableMetricsStruct readableMetrics) {
       this.fileAsStruct = fileAsStruct;
       this.readableMetrics = readableMetrics;
-      this.position = position;
+      this.columnSize = columnSize;
+      this.metricsPosition = metricsPosition;
     }
 
     @Override
     public int size() {
-      return position;
+      return columnSize;
     }
 
     @Override
     public <T> T get(int pos, Class<T> javaClass) {
-      if (pos < position) {
+      if (pos < metricsPosition) {
         return fileAsStruct.get(pos, javaClass);
-      } else if (pos == position) {
+      } else if (pos == metricsPosition) {
         return javaClass.cast(readableMetrics);
       } else {
         return fileAsStruct.get(pos - 1, javaClass);

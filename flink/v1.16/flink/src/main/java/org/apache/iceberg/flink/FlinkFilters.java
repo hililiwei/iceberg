@@ -248,28 +248,28 @@ public class FlinkFilters {
     org.apache.flink.table.expressions.Expression left = args.get(0);
     org.apache.flink.table.expressions.Expression right = args.get(1);
 
-    if (left instanceof FieldReferenceExpression && right instanceof ValueLiteralExpression) {
+    if (left instanceof FieldReferenceExpression) {
+      Optional<Object> lit = Optional.empty();
       String name = ((FieldReferenceExpression) left).getName();
-      Optional<Object> lit = convertLiteral((ValueLiteralExpression) right);
+      if (right instanceof ValueLiteralExpression) {
+        lit = convertLiteral((ValueLiteralExpression) right);
+      } else if (right instanceof CallExpression) {
+        lit = convertCallExpression((CallExpression) right);
+      }
+
       if (lit.isPresent()) {
         return Optional.of(convertLR.apply(name, lit.get()));
       }
-    } else if (left instanceof ValueLiteralExpression
-        && right instanceof FieldReferenceExpression) {
-      Optional<Object> lit = convertLiteral((ValueLiteralExpression) left);
+    } else if (right instanceof FieldReferenceExpression) {
+      Optional<Object> lit = Optional.empty();
       String name = ((FieldReferenceExpression) right).getName();
-      if (lit.isPresent()) {
-        return Optional.of(convertRL.apply(name, lit.get()));
+      if (left instanceof ValueLiteralExpression) {
+        lit = convertLiteral((ValueLiteralExpression) left);
+
+      } else if (left instanceof CallExpression) {
+        lit = convertCallExpression((CallExpression) left);
       }
-    } else if (left instanceof FieldReferenceExpression && right instanceof CallExpression) {
-      String name = ((FieldReferenceExpression) left).getName();
-      Optional<Object> lit = convertCallExpression((CallExpression) right);
-      if (lit.isPresent()) {
-        return Optional.of(convertLR.apply(name, lit.get()));
-      }
-    } else if (left instanceof CallExpression && right instanceof FieldReferenceExpression) {
-      String name = ((FieldReferenceExpression) right).getName();
-      Optional<Object> lit = convertCallExpression((CallExpression) left);
+
       if (lit.isPresent()) {
         return Optional.of(convertRL.apply(name, lit.get()));
       }

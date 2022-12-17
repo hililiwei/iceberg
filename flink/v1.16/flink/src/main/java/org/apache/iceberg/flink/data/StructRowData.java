@@ -227,7 +227,7 @@ public class StructRowData implements RowData {
         type.fields().get(pos).type().asStructType(), struct.get(pos, StructLike.class));
   }
 
-  private Object coverValue(Type elementType, Object value) {
+  private <T> Object coverValue(Type elementType, Object value) {
     switch (elementType.typeId()) {
       case BOOLEAN:
       case INTEGER:
@@ -250,15 +250,15 @@ public class StructRowData implements RowData {
       case STRUCT:
         return new StructRowData(elementType.asStructType(), (StructLike) value);
       case LIST:
-        List<?> list = (List<?>) value;
-        Object[] array = new Object[list.size()];
+        List<Object> list = (List<Object>) value;
+        T[] array = (T[]) new Object[list.size()];
 
         int index = 0;
         for (Object element : list) {
           if (element == null) {
             array[index] = null;
           } else {
-            array[index] = coverValue(elementType.asListType().elementType(), element);
+            array[index] = (T) coverValue(elementType.asListType().elementType(), element);
           }
 
           index += 1;

@@ -28,6 +28,7 @@ import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import org.apache.flink.table.data.DecimalData;
 import org.apache.flink.table.data.GenericArrayData;
@@ -119,7 +120,8 @@ public class DataGenerators {
       for (int i = 0; i < 16; ++i) {
         uuidBytes[i] = (byte) i;
       }
-      genericRecord.setField("uuid_field", uuidBytes);
+
+      genericRecord.setField("uuid_field", UUID.nameUUIDFromBytes(uuidBytes));
 
       byte[] binaryBytes = new byte[7];
       for (int i = 0; i < 7; ++i) {

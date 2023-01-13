@@ -37,9 +37,11 @@ import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.BoundedOneInput;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
+import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.table.runtime.typeutils.SortedMapTypeInfo;
 import org.apache.iceberg.AppendFiles;
+import org.apache.iceberg.DataFile;
 import org.apache.iceberg.ManifestFile;
 import org.apache.iceberg.ReplacePartitions;
 import org.apache.iceberg.RowDelta;
@@ -120,6 +122,8 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
 
   private final Integer workerPoolSize;
   private transient ExecutorService workerPool;
+
+  Map<partion, List<datafile>> maps = Maps.newHashMap();
 
   IcebergFilesCommitter(
       TableLoader tableLoader,
@@ -232,12 +236,21 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
     if (checkpointId > maxCommittedCheckpointId) {
       commitUpToCheckpoint(dataFilesPerCheckpoint, flinkJobId, operatorUniqueId, checkpointId);
       this.maxCommittedCheckpointId = checkpointId;
+
+
+
     } else {
       LOG.info(
           "Skipping committing checkpoint {}. {} is already committed.",
           checkpointId,
           maxCommittedCheckpointId);
     }
+  }
+
+
+  @Override
+  public void processWatermark(Watermark mark) throws Exception {
+    super.processWatermark(mark);
   }
 
   private void commitUpToCheckpoint(
@@ -409,6 +422,16 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
 
   @Override
   public void processElement(StreamRecord<WriteResult> element) {
+    WriteResult value = element.getValue();
+
+    DataFile[] dataFiles = value.dataFiles();
+
+    DataFile dataFile = dataFiles[0];
+
+
+
+
+
     this.writeResultsOfCurrentCkpt.add(element.getValue());
   }
 

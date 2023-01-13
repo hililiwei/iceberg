@@ -107,8 +107,8 @@ public abstract class BaseTaskWriter<T> implements TaskWriter<T> {
   /** Base equality delta writer to write both insert records and equality-deletes. */
   protected abstract class BaseEqualityDeltaWriter implements Closeable {
     private final StructProjection structProjection;
-    private RollingFileWriter dataWriter;
-    private RollingEqDeleteWriter eqDeleteWriter;
+    protected RollingFileWriter dataWriter;
+    protected RollingEqDeleteWriter eqDeleteWriter;
     private SortedPosDeleteWriter<T> posDeleteWriter;
     private Map<StructLike, PathOffset> insertedRowMap;
 
@@ -308,7 +308,7 @@ public abstract class BaseTaskWriter<T> implements TaskWriter<T> {
       return currentRows % ROWS_DIVISOR == 0 && length(currentWriter) >= targetFileSize;
     }
 
-    private void closeCurrent() throws IOException {
+    protected void closeCurrent() throws IOException {
       if (currentWriter != null) {
         try {
           currentWriter.close();
@@ -363,13 +363,13 @@ public abstract class BaseTaskWriter<T> implements TaskWriter<T> {
     }
 
     @Override
-    void complete(DataWriter<T> closedWriter) {
+    protected void complete(DataWriter<T> closedWriter) {
       completedDataFiles.add(closedWriter.toDataFile());
     }
   }
 
   protected class RollingEqDeleteWriter extends BaseRollingWriter<EqualityDeleteWriter<T>> {
-    RollingEqDeleteWriter(StructLike partitionKey) {
+    public RollingEqDeleteWriter(StructLike partitionKey) {
       super(partitionKey);
     }
 
@@ -389,7 +389,7 @@ public abstract class BaseTaskWriter<T> implements TaskWriter<T> {
     }
 
     @Override
-    void complete(EqualityDeleteWriter<T> closedWriter) {
+    protected void complete(EqualityDeleteWriter<T> closedWriter) {
       completedDeleteFiles.add(closedWriter.toDeleteFile());
     }
   }

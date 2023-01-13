@@ -113,6 +113,9 @@ public class RowDataTaskWriterFactory implements TaskWriterFactory<RowData> {
 
   @Override
   public TaskWriter<RowData> create() {
+
+    // todo create custom BaseDeltaPartitionedTaskWriter
+
     Preconditions.checkNotNull(
         outputFileFactory,
         "The outputFileFactory shouldn't be null if we have invoked the initialize().");

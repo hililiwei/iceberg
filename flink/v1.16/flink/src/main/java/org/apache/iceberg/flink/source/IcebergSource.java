@@ -367,7 +367,9 @@ public class IcebergSource<T> implements Source<T, IcebergSourceSplit, IcebergEn
     }
 
     public Builder<T> exposeLocality(boolean newExposeLocality) {
-      this.exposeLocality = newExposeLocality;
+      readOptions.put(
+          FlinkConfigOptions.TABLE_EXEC_ICEBERG_EXPOSE_SPLIT_LOCALITY_INFO.key(),
+          Boolean.toString(newExposeLocality));
       return this;
     }
 
@@ -412,9 +414,6 @@ public class IcebergSource<T> implements Source<T, IcebergSourceSplit, IcebergEn
       if (projectedFlinkSchema != null) {
         contextBuilder.project(FlinkSchemaUtil.convert(icebergSchema, projectedFlinkSchema));
       }
-
-      contextBuilder.exposeLocality(
-          SourceUtil.isLocalityEnabled(table, flinkConfig, exposeLocality));
 
       ScanContext context = contextBuilder.build();
       if (readerFunction == null) {

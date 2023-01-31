@@ -26,6 +26,7 @@ import org.apache.flink.table.api.config.ExecutionConfigOptions;
 import org.apache.hadoop.fs.Path;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.flink.FlinkConfigOptions;
+import org.apache.iceberg.flink.FlinkReadConf;
 import org.apache.iceberg.flink.source.assigner.SplitAssignerFactory;
 import org.apache.iceberg.flink.source.assigner.SplitAssignerType;
 import org.apache.iceberg.hadoop.HadoopFileIO;
@@ -41,12 +42,8 @@ class SourceUtil {
   private static final Logger LOG = LoggerFactory.getLogger(SourceUtil.class);
   private static final Set<String> FILE_SYSTEM_SUPPORT_LOCALITY = ImmutableSet.of("hdfs");
 
-  static boolean isLocalityEnabled(
-      Table table, ReadableConfig readableConfig, Boolean exposeLocality) {
-    Boolean localityEnabled =
-        exposeLocality != null
-            ? exposeLocality
-            : readableConfig.get(FlinkConfigOptions.TABLE_EXEC_ICEBERG_EXPOSE_SPLIT_LOCALITY_INFO);
+  static boolean isLocalityEnabled(Table table, FlinkReadConf flinkReadConf) {
+    Boolean localityEnabled = flinkReadConf.exposeLocality();
 
     if (localityEnabled != null && !localityEnabled) {
       return false;

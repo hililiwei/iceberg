@@ -88,6 +88,8 @@ public class StreamingMonitorFunction extends RichSourceFunction<FlinkInputSplit
         scanContext.endSnapshotId() == null,
         "Cannot set end-snapshot-id option for streaming reader");
     Preconditions.checkArgument(
+        scanContext.endTag() == null, "Cannot set end-tag option for streaming reader");
+    Preconditions.checkArgument(
         scanContext.maxPlanningSnapshotCount() > 0,
         "The max-planning-snapshot-count must be greater than zero");
     this.tableLoader = tableLoader;
@@ -124,17 +126,27 @@ public class StreamingMonitorFunction extends RichSourceFunction<FlinkInputSplit
     if (context.isRestored()) {
       LOG.info("Restoring state for the {}.", getClass().getSimpleName());
       lastSnapshotId = lastSnapshotIdState.get().iterator().next();
-    } else if (scanContext.startSnapshotId() != null) {
+    } else if (scanContext.startTag() != null || scanContext.startSnapshotId() != null) {
+      Preconditions.checkArgument(
+          !(scanContext.startTag() != null && scanContext.startSnapshotId() != null),
+          "START_SNAPSHOT_ID and START_TAG cannot be used both.");
+      Preconditions.checkArgument(
+          scanContext.branch() == null,
+          "Cannot scan table using ref %s configured for streaming reader yet.");
       Preconditions.checkNotNull(
           table.currentSnapshot(), "Don't have any available snapshot in table.");
 
       long currentSnapshotId = table.currentSnapshot().snapshotId();
+      long startSnapshotId =
+          scanContext.startTag() != null
+              ? table.snapshot(scanContext.startTag()).snapshotId()
+              : scanContext.startSnapshotId();
       Preconditions.checkState(
-          SnapshotUtil.isAncestorOf(table, currentSnapshotId, scanContext.startSnapshotId()),
+          SnapshotUtil.isAncestorOf(table, currentSnapshotId, startSnapshotId),
           "The option start-snapshot-id %s is not an ancestor of the current snapshot.",
-          scanContext.startSnapshotId());
+          startSnapshotId);
 
-      lastSnapshotId = scanContext.startSnapshotId();
+      lastSnapshotId = startSnapshotId;
     }
   }
 

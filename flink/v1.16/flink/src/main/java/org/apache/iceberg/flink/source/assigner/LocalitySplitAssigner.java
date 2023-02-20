@@ -37,6 +37,7 @@ import org.apache.iceberg.relocated.com.google.common.collect.Sets;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/** A split assigner that assigns splits to subtasks based on the locality of the splits. */
 @Internal
 public class LocalitySplitAssigner implements SplitAssigner {
   private static final Logger LOG = LoggerFactory.getLogger(LocalitySplitAssigner.class);
@@ -92,6 +93,10 @@ public class LocalitySplitAssigner implements SplitAssigner {
       }
 
       if (splitsEntry.getKey().contains(hostname)) {
+        if (splits.size() == 1) {
+          splitsIterator.remove();
+        }
+
         return splits;
       }
     }
@@ -113,18 +118,18 @@ public class LocalitySplitAssigner implements SplitAssigner {
     addSplits(splits);
   }
 
-  private void addSplits(Collection<IcebergSourceSplit> splits) {
+  private synchronized void addSplits(Collection<IcebergSourceSplit> splits) {
     if (splits.isEmpty()) {
       return;
     }
 
     for (IcebergSourceSplit split : splits) {
-      String[] hostname = split.hostname();
-      if (hostname == null) {
-        hostname = new String[] {DEFAULT_HOSTNAME};
+      String[] hostnames = split.hostnames();
+      if (hostnames == null) {
+        hostnames = new String[] {DEFAULT_HOSTNAME};
       }
 
-      Set<String> hosts = Sets.newHashSet(hostname);
+      Set<String> hosts = Sets.newHashSet(hostnames);
       Deque<IcebergSourceSplit> icebergSourceSplits =
           pendingSplits.computeIfAbsent(hosts, key -> new ArrayDeque<>());
       icebergSourceSplits.add(split);
@@ -134,9 +139,8 @@ public class LocalitySplitAssigner implements SplitAssigner {
     completeAvailableFuturesIfNeeded();
   }
 
-  /** Simple assigner only tracks unassigned splits */
   @Override
-  public Collection<IcebergSourceSplitState> state() {
+  public synchronized Collection<IcebergSourceSplitState> state() {
     return pendingSplits.values().stream()
         .flatMap(Collection::stream)
         .map(split -> new IcebergSourceSplitState(split, IcebergSourceSplitStatus.UNASSIGNED))
@@ -152,8 +156,8 @@ public class LocalitySplitAssigner implements SplitAssigner {
   }
 
   @Override
-  public int pendingSplitCount() {
-    return (int) pendingSplits.values().stream().mapToInt(Deque::size).count();
+  public synchronized int pendingSplitCount() {
+    return pendingSplits.values().stream().mapToInt(Deque::size).sum();
   }
 
   private synchronized void completeAvailableFuturesIfNeeded() {

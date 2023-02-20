@@ -28,6 +28,7 @@ public enum SplitAssignerType {
       return new SimpleSplitAssignerFactory();
     }
   },
+
   LOCALITY {
     @Override
     public SplitAssignerFactory factory() {

@@ -105,6 +105,6 @@ public class FlinkConfigOptions {
                               + ": simple assigner that doesn't provide any guarantee on order or locality."),
                       TextElement.text(
                           SplitAssignerType.LOCALITY
-                              + ": locality assigner that provide guarantee on locality."))
+                              + ": locality assigner that assign splits with locality affinity preference."))
                   .build());
 }

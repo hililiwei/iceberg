@@ -43,11 +43,7 @@ class SourceUtil {
   }
 
   static SplitAssignerFactory createAssignerFactory(
-      ReadableConfig readableConfig, SplitAssignerFactory assignerFactory, Boolean exposeLocality) {
-    if (assignerFactory != null) {
-      return assignerFactory;
-    }
-
+      ReadableConfig readableConfig, Boolean exposeLocality) {
     SplitAssignerType assignerType =
         readableConfig.get(FlinkConfigOptions.TABLE_EXEC_SPLIT_ASSIGNER_TYPE);
     if (assignerType != null) {

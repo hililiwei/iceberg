@@ -38,6 +38,8 @@ public class IcebergSourceReader<T>
         RecordAndPosition<T>, T, IcebergSourceSplit, IcebergSourceSplit> {
   private static final Logger LOG = LoggerFactory.getLogger(IcebergSourceReader.class);
 
+  private String hostname;
+
   public IcebergSourceReader(
       IcebergSourceReaderMetrics metrics,
       ReaderFunction<T> readerFunction,
@@ -53,6 +55,12 @@ public class IcebergSourceReader<T>
   public void start() {
     // We request a split only if we did not get splits during the checkpoint restore.
     // Otherwise, reader restarts will keep requesting more and more splits.
+    try {
+      hostname = InetAddress.getLocalHost().getHostName();
+    } catch (UnknownHostException e) {
+      LOG.warn("Can not get hostname.", e);
+    }
+
     if (getNumberOfCurrentlyAssignedSplits() == 0) {
       requestSplit(Collections.emptyList());
     }
@@ -74,13 +82,6 @@ public class IcebergSourceReader<T>
   }
 
   private void requestSplit(Collection<String> finishedSplitIds) {
-    String hostname = null;
-    try {
-      hostname = InetAddress.getLocalHost().getHostName();
-    } catch (UnknownHostException e) {
-      LOG.warn("Can not get hostname.", e);
-    }
-
     context.sendSourceEventToCoordinator(new SplitRequestEvent(finishedSplitIds, hostname));
   }
 }

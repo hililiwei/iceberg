@@ -39,18 +39,18 @@ public class IcebergSourceSplit implements SourceSplit, Serializable {
 
   private int fileOffset;
   private long recordOffset;
-  private final String[] hostname;
+  private final String[] hostnames;
 
   // The splits are frequently serialized into checkpoints.
   // Caching the byte representation makes repeated serialization cheap.
   @Nullable private transient byte[] serializedBytesCache;
 
   private IcebergSourceSplit(
-      CombinedScanTask task, int fileOffset, long recordOffset, @Nullable String[] hostname) {
+      CombinedScanTask task, int fileOffset, long recordOffset, @Nullable String[] hostnames) {
     this.task = task;
     this.fileOffset = fileOffset;
     this.recordOffset = recordOffset;
-    this.hostname = hostname;
+    this.hostnames = hostnames;
   }
 
   public static IcebergSourceSplit fromCombinedScanTask(CombinedScanTask combinedScanTask) {
@@ -84,8 +84,8 @@ public class IcebergSourceSplit implements SourceSplit, Serializable {
     return recordOffset;
   }
 
-  public String[] hostname() {
-    return hostname;
+  public String[] hostnames() {
+    return hostnames;
   }
 
   @Override
@@ -106,7 +106,7 @@ public class IcebergSourceSplit implements SourceSplit, Serializable {
         .add("files", toString(task.files()))
         .add("fileOffset", fileOffset)
         .add("recordOffset", recordOffset)
-        .add("hostname", hostname)
+        .add("hostname", hostnames)
         .toString();
   }
 

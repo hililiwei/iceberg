@@ -456,8 +456,10 @@ public class IcebergSource<T> implements Source<T, IcebergSourceSplit, IcebergEn
         }
       }
 
-      splitAssignerFactory =
-          SourceUtil.createAssignerFactory(flinkConfig, splitAssignerFactory, context.exposeLocality());
+      if (splitAssignerFactory == null) {
+        splitAssignerFactory =
+            SourceUtil.createAssignerFactory(flinkConfig, context.exposeLocality());
+      }
 
       checkRequired();
       // Since builder already load the table, pass it to the source to avoid double loading

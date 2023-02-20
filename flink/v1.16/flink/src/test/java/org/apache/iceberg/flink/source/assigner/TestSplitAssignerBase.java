@@ -45,12 +45,14 @@ public abstract class TestSplitAssignerBase {
 
     // now add some splits
     addSplitsRunnable.run();
-    Assert.assertEquals(true, futureCompleted.get());
+    Assert.assertTrue(futureCompleted.get());
+    Assert.assertEquals(assigner.pendingSplitCount(), splitCount);
 
     for (int i = 0; i < splitCount; ++i) {
       assertGetNext(assigner, GetSplitResult.Status.AVAILABLE, hostname);
+      Assert.assertEquals(assigner.pendingSplitCount(), splitCount - i - 1);
     }
-    assertGetNext(assigner, GetSplitResult.Status.UNAVAILABLE);
+    assertGetNext(assigner, GetSplitResult.Status.UNAVAILABLE, hostname);
     assertSnapshot(assigner, 0);
   }
 
@@ -62,13 +64,13 @@ public abstract class TestSplitAssignerBase {
       SplitAssigner assigner, GetSplitResult.Status expectedStatus, String hostname) {
     GetSplitResult result = assigner.getNext(hostname);
     Assert.assertEquals(expectedStatus, result.status());
-    if (hostname != null) {
-      Assert.assertTrue(Sets.newSet(result.split().hostname()).contains(hostname));
-    }
 
     switch (expectedStatus) {
       case AVAILABLE:
         Assert.assertNotNull(result.split());
+        if (hostname != null) {
+          Assert.assertTrue(Sets.newSet(result.split().hostnames()).contains(hostname));
+        }
         break;
       case CONSTRAINED:
       case UNAVAILABLE:

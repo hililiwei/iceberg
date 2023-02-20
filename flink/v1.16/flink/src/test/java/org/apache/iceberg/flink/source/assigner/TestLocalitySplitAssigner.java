@@ -95,11 +95,11 @@ public class TestLocalitySplitAssigner extends TestSplitAssignerBase {
     GetSplitResult result = assigner.getNext(correctHostname);
     Assert.assertEquals(expectedStatus, result.status());
     if (incorrectHostname != null) {
-      Assert.assertFalse(Sets.newSet(result.split().hostname()).contains(incorrectHostname));
+      Assert.assertFalse(Sets.newSet(result.split().hostnames()).contains(incorrectHostname));
     }
 
     if (correctHostname != null) {
-      Assert.assertTrue(Sets.newSet(result.split().hostname()).contains(correctHostname));
+      Assert.assertTrue(Sets.newSet(result.split().hostnames()).contains(correctHostname));
     }
 
     switch (expectedStatus) {

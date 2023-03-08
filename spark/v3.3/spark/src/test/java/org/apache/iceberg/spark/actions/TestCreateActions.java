@@ -69,6 +69,7 @@ import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
+import org.assertj.core.api.Assertions;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Assume;
@@ -444,8 +445,8 @@ public class TestCreateActions extends SparkCatalogTestBase {
 
     // Corrupt the second file
     File file = expectedFiles.get(1);
-    Assume.assumeTrue("Delete source file!", file.delete());
-    Assume.assumeTrue("Create a empty source file!", file.createNewFile());
+    Assert.assertTrue("Delete source file!", file.delete());
+    Assert.assertTrue("Create a empty source file!", file.createNewFile());
 
     MigrateTable migrateAction = SparkActions.get().migrateTable(source);
 
@@ -468,11 +469,7 @@ public class TestCreateActions extends SparkCatalogTestBase {
         destTable.properties().get(TableCatalog.PROP_PROVIDER));
     List<Row> actual = spark.table(dest).collectAsList();
 
-    Assert.assertEquals(
-        String.format(
-            "Rows in migrated table did not match\nExpected :%s rows \nFound :%s", 3, actual),
-        3,
-        actual.size());
+    Assertions.assertThat(actual).hasSize(3);
 
     Assert.assertEquals(
         "Expected number of migrated files", 1, migratedFiles.migratedDataFilesCount());

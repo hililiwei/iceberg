@@ -217,11 +217,9 @@ public class TableMigrationUtil {
           LOG.warn("Skipping unknown partition format: {} - {}", format, partitionUri);
         } else {
           throw new UnsupportedOperationException(
-              "Unknown partition format: "
-                  + format
-                  + " - "
-                  + partitionUri
-                  + ", set skip_on_error=true to skip it.");
+              String.format(
+                  "Unknown partition format: %s - %s, set skip_on_error=true to skip it.",
+                  format, partitionUri));
         }
       }
       return Arrays.stream(datafiles).filter(Objects::nonNull).collect(Collectors.toList());

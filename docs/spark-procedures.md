@@ -425,12 +425,12 @@ By default, the original table is retained with the name `table_BACKUP_`.
 
 #### Usage
 
-| Argument Name   | Required? | Type | Description |
-|-----------------|-----------|------|-------------|
-| `table`         | ✔️        | string | Name of the table to migrate |
-| `properties`    | ️         | map<string, string> | Properties for the new Iceberg table |
-| `drop_backup`   |           | boolean | When true, the original table will not be retained as backup (defaults to false) |
-| `skip_on_error` | ️         | boolean | If true, skip files which cannot be imported into Iceberg (false by default) |
+| Argument Name   | Required? | Type                | Description                                                                      |
+|-----------------|-----------|---------------------|----------------------------------------------------------------------------------|
+| `table`         | ✔️        | string              | Name of the table to migrate                                                     |
+| `properties`    | ️         | map<string, string> | Properties for the new Iceberg table                                             |
+| `drop_backup`   |           | boolean             | When true, the original table will not be retained as backup (defaults to false) |
+| `skip_on_error` | ️         | boolean             | If true, skip files which cannot be imported into Iceberg (false by default)     |
 
 #### Output
 

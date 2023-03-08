@@ -440,7 +440,7 @@ public class TestCreateActions extends SparkCatalogTestBase {
 
     List<File> expectedFiles = expectedFiles(source).collect(Collectors.toList());
 
-    Assert.assertEquals("Expected number of source files", 2, expectedFiles.size());
+    Assertions.assertThat(expectedFiles).hasSize(2);
 
     // Corrupt the second file
     File file = expectedFiles.get(1);

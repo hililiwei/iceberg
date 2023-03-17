@@ -18,11 +18,9 @@
  */
 package org.apache.iceberg.flink.source.assigner;
 
-import java.util.ArrayDeque;
 import java.util.Collection;
-import java.util.Deque;
-import java.util.Iterator;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -43,7 +41,7 @@ public class LocalitySplitAssigner implements SplitAssigner {
   private static final Logger LOG = LoggerFactory.getLogger(LocalitySplitAssigner.class);
 
   private static final String DEFAULT_HOSTNAME = "hostname";
-  private final Map<Set<String>, Deque<IcebergSourceSplit>> pendingSplits;
+  private Map<String, Set<IcebergSourceSplit>> pendingSplits;
   private CompletableFuture<Void> availableFuture;
 
   public LocalitySplitAssigner() {
@@ -62,50 +60,46 @@ public class LocalitySplitAssigner implements SplitAssigner {
       return GetSplitResult.unavailable();
     }
 
-    Deque<IcebergSourceSplit> icebergSourceSplits =
+    IcebergSourceSplit split =
         hostname == null
             ? getIcebergSourceSplits(DEFAULT_HOSTNAME, pendingSplits)
             : getIcebergSourceSplits(hostname, pendingSplits);
     LOG.info("Get Iceberg source splits for: {}", hostname);
 
-    if (!icebergSourceSplits.isEmpty()) {
-      IcebergSourceSplit split = icebergSourceSplits.poll();
-      return GetSplitResult.forSplit(split);
-    }
-
-    return GetSplitResult.unavailable();
+    return split != null ? GetSplitResult.forSplit(split) : GetSplitResult.unavailable();
   }
 
-  private Deque<IcebergSourceSplit> getIcebergSourceSplits(
-      String hostname, Map<Set<String>, Deque<IcebergSourceSplit>> splitsDeque) {
-    if (splitsDeque.isEmpty()) {
-      return new ArrayDeque<>();
-    }
+  private IcebergSourceSplit getIcebergSourceSplits(
+      String hostname, Map<String, Set<IcebergSourceSplit>> splitsDeque) {
+    IcebergSourceSplit result = null;
+    Set<IcebergSourceSplit> icebergSourceSplits = getSplits(hostname, splitsDeque);
 
-    Iterator<Map.Entry<Set<String>, Deque<IcebergSourceSplit>>> splitsIterator =
-        splitsDeque.entrySet().iterator();
-    while (splitsIterator.hasNext()) {
-      Map.Entry<Set<String>, Deque<IcebergSourceSplit>> splitsEntry = splitsIterator.next();
-      Deque<IcebergSourceSplit> splits = splitsEntry.getValue();
-      if (splits.isEmpty()) {
-        splitsIterator.remove();
-        continue;
-      }
-
-      if (splitsEntry.getKey().contains(hostname)) {
-        if (splits.size() == 1) {
-          splitsIterator.remove();
-        }
-
-        return splits;
+    if (icebergSourceSplits != null) {
+      Optional<IcebergSourceSplit> first = icebergSourceSplits.stream().findFirst();
+      if (first.isPresent()) {
+        result = first.get();
+        splitsDeque.values().forEach(splitSet -> splitSet.remove(first.get()));
       }
     }
 
-    if (!splitsDeque.isEmpty()) {
-      return splitsDeque.values().stream().findAny().get();
+    return result;
+  }
+
+  private Set<IcebergSourceSplit> getSplits(
+      String hostname, Map<String, Set<IcebergSourceSplit>> splitsDeque) {
+    Set<IcebergSourceSplit> icebergSourceSplits = splitsDeque.get(hostname);
+    if (icebergSourceSplits != null) {
+      if (!icebergSourceSplits.isEmpty()) {
+        return icebergSourceSplits;
+      }
     }
 
-    return new ArrayDeque<>();
+    splitsDeque.remove(hostname);
+
+    return splitsDeque.values().stream()
+        .filter(splitSet -> splitSet != null && splitSet.size() > 0)
+        .findFirst()
+        .orElse(null);
   }
 
   @Override
@@ -129,10 +123,18 @@ public class LocalitySplitAssigner implements SplitAssigner {
         hostnames = new String[] {DEFAULT_HOSTNAME};
       }
 
-      Set<String> hosts = Sets.newHashSet(hostnames);
-      Deque<IcebergSourceSplit> icebergSourceSplits =
-          pendingSplits.computeIfAbsent(hosts, key -> new ArrayDeque<>());
-      icebergSourceSplits.add(split);
+      for (String hostname : hostnames) {
+        pendingSplits.compute(
+            hostname,
+            (key, value) -> {
+              if (value == null) {
+                return Sets.newHashSet(split);
+              } else {
+                value.add(split);
+                return value;
+              }
+            });
+      }
     }
 
     // only complete pending future if new splits are discovered
@@ -157,7 +159,7 @@ public class LocalitySplitAssigner implements SplitAssigner {
 
   @Override
   public synchronized int pendingSplitCount() {
-    return pendingSplits.values().stream().mapToInt(Deque::size).sum();
+    return pendingSplits.values().stream().mapToInt(Set::size).sum();
   }
 
   private synchronized void completeAvailableFuturesIfNeeded() {

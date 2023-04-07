@@ -41,7 +41,15 @@ case class CreateOrReplaceBranchExec(
   override protected def run(): Seq[InternalRow] = {
     catalog.loadTable(ident) match {
       case iceberg: SparkTable =>
-        val snapshotId = branchOptions.snapshotId.getOrElse(iceberg.table.currentSnapshot().snapshotId())
+        var snapshotId = branchOptions.snapshotId.getOrElse(iceberg.table.currentSnapshot().snapshotId())
+
+        if (branchOptions.tagName.isDefined) {
+          iceberg.table().snapshot(branchOptions.tagName.get) match {
+            case null => throw new IllegalArgumentException(s"Tag ${branchOptions.tagName.get} does not exist")
+            case snapshot => snapshotId = snapshot.snapshotId()
+          }
+        }
+
         val manageSnapshots = iceberg.table().manageSnapshots()
         if (!replace) {
           val ref = iceberg.table().refs().get(branch);

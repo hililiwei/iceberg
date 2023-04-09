@@ -187,6 +187,20 @@ public abstract class BaseTaskWriter<T> implements TaskWriter<T> {
       }
     }
 
+    /**
+     * Delete those rows with the given key at first and then insert the original data.
+     *
+     * @param key is the projected data whose columns are the same as the equality fields.
+     * @param row is the original data.
+     */
+    public void Upsert(T key, T row) throws IOException {
+      deleteKey(key);
+
+      PathOffset pathOffset = PathOffset.of(dataWriter.currentPath(), dataWriter.currentRows());
+      insertedRowMap.put(StructCopy.copy(asStructLikeKey(key)), pathOffset);
+      dataWriter.write(row);
+    }
+
     @Override
     public void close() throws IOException {
       try {

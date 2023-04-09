@@ -81,9 +81,10 @@ abstract class BaseDeltaTaskWriter extends BaseTaskWriter<RowData> {
       case INSERT:
       case UPDATE_AFTER:
         if (upsert) {
-          writer.deleteKey(keyProjection.wrap(row));
+          writer.Upsert(keyProjection.wrap(row), row);
+        } else {
+          writer.write(row);
         }
-        writer.write(row);
         break;
 
       case UPDATE_BEFORE:

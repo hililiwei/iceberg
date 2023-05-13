@@ -181,4 +181,8 @@ public class FlinkReadConf {
         .defaultValue(FlinkConfigOptions.TABLE_EXEC_ICEBERG_WORKER_POOL_SIZE.defaultValue())
         .parse();
   }
+
+  public String scanMode() {
+    return confParser.stringConf().option(FlinkReadOptions.SCAN_MODE.key()).parseOptional();
+  }
 }

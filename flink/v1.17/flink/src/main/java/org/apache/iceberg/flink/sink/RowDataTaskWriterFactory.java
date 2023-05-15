@@ -27,6 +27,7 @@ import org.apache.iceberg.PartitionKey;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.Table;
+import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.flink.RowDataWrapper;
 import org.apache.iceberg.io.FileAppenderFactory;
 import org.apache.iceberg.io.FileIO;
@@ -38,6 +39,7 @@ import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.relocated.com.google.common.collect.Sets;
 import org.apache.iceberg.types.TypeUtil;
 import org.apache.iceberg.util.ArrayUtil;
+import org.apache.iceberg.util.PropertyUtil;
 
 public class RowDataTaskWriterFactory implements TaskWriterFactory<RowData> {
   private final Table table;
@@ -117,21 +119,64 @@ public class RowDataTaskWriterFactory implements TaskWriterFactory<RowData> {
         outputFileFactory,
         "The outputFileFactory shouldn't be null if we have invoked the initialize().");
 
+    boolean partitionCommitEnabled =
+        PropertyUtil.propertyAsBoolean(
+            table.properties(),
+            TableProperties.SINK_PARTITION_COMMIT_ENABLED,
+            TableProperties.SINK_PARTITION_COMMIT_ENABLED_DEFAULT);
+
     if (equalityFieldIds == null || equalityFieldIds.isEmpty()) {
       // Initialize a task writer to write INSERT only.
       if (spec.isUnpartitioned()) {
         return new UnpartitionedWriter<>(
             spec, format, appenderFactory, outputFileFactory, io, targetFileSizeBytes);
       } else {
-        return new RowDataPartitionedFanoutWriter(
-            spec,
-            format,
-            appenderFactory,
-            outputFileFactory,
-            io,
-            targetFileSizeBytes,
-            schema,
-            flinkSchema);
+        if (partitionCommitEnabled) {
+          String commitDelayString =
+              PropertyUtil.propertyAsString(
+                  table.properties(),
+                  TableProperties.SINK_PARTITION_COMMIT_DELAY,
+                  TableProperties.SINK_PARTITION_COMMIT_DELAY_DEFAULT);
+          String watermarkzoneID =
+              PropertyUtil.propertyAsString(
+                  table.properties(),
+                  TableProperties.SINK_PARTITION_COMMIT_WATERMARK_TIME_ZONE,
+                  TableProperties.SINK_PARTITION_COMMIT_WATERMARK_TIME_ZONE_DEFAULT);
+          String extractorPattern =
+              PropertyUtil.propertyAsString(
+                  table.properties(),
+                  TableProperties.PARTITION_TIME_EXTRACTOR_TIMESTAMP_PATTERN,
+                  null);
+          String formatterPattern =
+              PropertyUtil.propertyAsString(
+                  table.properties(),
+                  TableProperties.PARTITION_TIME_EXTRACTOR_TIMESTAMP_FORMATTER,
+                  null);
+
+          return new PartitionCommitWriter(
+              spec,
+              format,
+              appenderFactory,
+              outputFileFactory,
+              io,
+              targetFileSizeBytes,
+              schema,
+              flinkSchema,
+              commitDelayString,
+              watermarkzoneID,
+              extractorPattern,
+              formatterPattern);
+        } else {
+          return new RowDataPartitionedFanoutWriter(
+              spec,
+              format,
+              appenderFactory,
+              outputFileFactory,
+              io,
+              targetFileSizeBytes,
+              schema,
+              flinkSchema);
+        }
       }
     } else {
       // Initialize a task writer to write both INSERT and equality DELETE.

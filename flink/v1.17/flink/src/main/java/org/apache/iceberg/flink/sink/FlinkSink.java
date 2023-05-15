@@ -41,6 +41,7 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSink;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.functions.sink.DiscardingSink;
+import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.util.DataFormatConverters;
@@ -55,6 +56,7 @@ import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.SerializableTable;
 import org.apache.iceberg.Table;
+import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.flink.FlinkSchemaUtil;
 import org.apache.iceberg.flink.FlinkWriteConf;
 import org.apache.iceberg.flink.FlinkWriteOptions;
@@ -67,6 +69,7 @@ import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.iceberg.relocated.com.google.common.collect.Maps;
 import org.apache.iceberg.relocated.com.google.common.collect.Sets;
 import org.apache.iceberg.types.TypeUtil;
+import org.apache.iceberg.util.PropertyUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -422,13 +425,32 @@ public class FlinkSink {
 
     private SingleOutputStreamOperator<Void> appendCommitter(
         SingleOutputStreamOperator<WriteResult> writerStream) {
-      IcebergFilesCommitter filesCommitter =
-          new IcebergFilesCommitter(
-              tableLoader,
-              flinkWriteConf.overwriteMode(),
-              snapshotProperties,
-              flinkWriteConf.workerPoolSize(),
-              flinkWriteConf.branch());
+      OneInputStreamOperator filesCommitter = null;
+
+      boolean partitionCommitEnabled =
+          PropertyUtil.propertyAsBoolean(
+              table.properties(),
+              TableProperties.SINK_PARTITION_COMMIT_ENABLED,
+              TableProperties.SINK_PARTITION_COMMIT_ENABLED_DEFAULT);
+
+      if (partitionCommitEnabled) {
+        filesCommitter =
+            new IcebergFilesPartitionCommitter(
+                tableLoader,
+                flinkWriteConf.overwriteMode(),
+                snapshotProperties,
+                flinkWriteConf.workerPoolSize(),
+                flinkWriteConf.branch());
+      } else {
+        filesCommitter =
+            new IcebergCheckpointCommitter(
+                tableLoader,
+                flinkWriteConf.overwriteMode(),
+                snapshotProperties,
+                flinkWriteConf.workerPoolSize(),
+                flinkWriteConf.branch());
+      }
+
       SingleOutputStreamOperator<Void> committerStream =
           writerStream
               .transform(operatorName(ICEBERG_FILES_COMMITTER_NAME), Types.VOID, filesCommitter)
@@ -461,8 +483,20 @@ public class FlinkSink {
         }
       }
 
-      IcebergStreamWriter<RowData> streamWriter =
-          createStreamWriter(table, flinkWriteConf, flinkRowType, equalityFieldIds);
+      boolean partitionCommitEnabled =
+          PropertyUtil.propertyAsBoolean(
+              table.properties(),
+              TableProperties.SINK_PARTITION_COMMIT_ENABLED,
+              TableProperties.SINK_PARTITION_COMMIT_ENABLED_DEFAULT);
+
+      OneInputStreamOperator<RowData, WriteResult> streamWriter;
+
+      if (partitionCommitEnabled) {
+        streamWriter =
+            createPartitionStreamWriter(table, flinkWriteConf, flinkRowType, equalityFieldIds);
+      } else {
+        streamWriter = createStreamWriter(table, flinkWriteConf, flinkRowType, equalityFieldIds);
+      }
 
       int parallelism =
           flinkWriteConf.writeParallelism() == null
@@ -570,6 +604,28 @@ public class FlinkSink {
     } else {
       return FlinkSchemaUtil.convert(schema);
     }
+  }
+
+  static IcebergPartitionStreamWriter createPartitionStreamWriter(
+      Table table,
+      FlinkWriteConf flinkWriteConf,
+      RowType flinkRowType,
+      List<Integer> equalityFieldIds) {
+
+    Preconditions.checkArgument(table != null, "Iceberg table shouldn't be null");
+    Table serializableTable = SerializableTable.copyOf(table);
+    FileFormat format = flinkWriteConf.dataFileFormat();
+    TaskWriterFactory<RowData> taskWriterFactory =
+        new RowDataTaskWriterFactory(
+            serializableTable,
+            flinkRowType,
+            flinkWriteConf.targetDataFileSize(),
+            format,
+            writeProperties(table, format, flinkWriteConf),
+            equalityFieldIds,
+            flinkWriteConf.upsertMode());
+
+    return new IcebergPartitionStreamWriter(table.name(), taskWriterFactory);
   }
 
   static IcebergStreamWriter<RowData> createStreamWriter(

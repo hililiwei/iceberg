@@ -363,7 +363,7 @@ public abstract class BaseTaskWriter<T> implements TaskWriter<T> {
     }
 
     @Override
-    void complete(DataWriter<T> closedWriter) {
+    protected void complete(DataWriter<T> closedWriter) {
       completedDataFiles.add(closedWriter.toDataFile());
     }
   }

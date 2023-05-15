@@ -362,4 +362,30 @@ public class TableProperties {
 
   public static final String UPSERT_ENABLED = "write.upsert.enabled";
   public static final boolean UPSERT_ENABLED_DEFAULT = false;
+
+  // Partition commit trigger
+  public static final String SINK_PARTITION_COMMIT_ENABLED = "sink.partition-commit.enabled";
+  public static final boolean SINK_PARTITION_COMMIT_ENABLED_DEFAULT = false;
+  public static final String SINK_PARTITION_COMMIT_DELAY = "sink.partition-commit.delay";
+  public static final String SINK_PARTITION_COMMIT_DELAY_DEFAULT = "0s";
+  public static final String SINK_PARTITION_COMMIT_WATERMARK_TIME_ZONE =
+      "sink.partition-commit.watermark-time-zone";
+  public static final String SINK_PARTITION_COMMIT_WATERMARK_TIME_ZONE_DEFAULT = "UTC";
+  // Partition Time Extractor
+  public static final String PARTITION_TIME_EXTRACTOR_TIMESTAMP_PATTERN =
+      "partition.time-extractor.timestamp-pattern";
+  public static final String PARTITION_TIME_EXTRACTOR_TIMESTAMP_FORMATTER =
+      "partition.time-extractor.timestamp-formatter";
+  public static final String PARTITION_TIME_EXTRACTOR_TIMESTAMP_FORMATTER_DEFAULT =
+      "yyyy-MM-dd HH:mm:ss";
+  // Partition Commit Policy
+  public static final String SINK_PARTITION_COMMIT_POLICY_KIND =
+      "sink.partition-commit.policy.kind";
+  public static final String SINK_PARTITION_COMMIT_POLICY_KIND_DEFAULT = "default";
+  public static final String SINK_PARTITION_COMMIT_SUCCESS_FILE_NAME =
+      "sink.partition-commit.success-file.name";
+  public static final String SINK_PARTITION_COMMIT_SUCCESS_FILE_NAME_DEFAULT = "_SUCCESS";
+
+  public static final String SINK_PARTITION_COMMIT_POLICY_CLASS =
+      "sink.partition-commit.policy.class";
 }

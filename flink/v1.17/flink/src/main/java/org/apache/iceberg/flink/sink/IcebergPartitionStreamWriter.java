@@ -32,13 +32,9 @@ import org.apache.iceberg.flink.data.PartitionWriteResult;
 import org.apache.iceberg.io.WriteResult;
 import org.apache.iceberg.relocated.com.google.common.base.MoreObjects;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 class IcebergPartitionStreamWriter extends AbstractStreamOperator<WriteResult>
     implements OneInputStreamOperator<RowData, WriteResult>, BoundedOneInput {
-  private static final Logger LOG = LoggerFactory.getLogger(IcebergPartitionStreamWriter.class);
-
   private static final long serialVersionUID = 1L;
 
   private final String fullTableName;
@@ -127,9 +123,7 @@ class IcebergPartitionStreamWriter extends AbstractStreamOperator<WriteResult>
     }
 
     long startNano = System.nanoTime();
-
     List<PartitionWriteResult> results = Lists.newArrayList();
-
     PartitionWriteResult newResult = writer.complete(currentWatermark);
     while (newResult != null) {
       results.add(newResult);

@@ -19,6 +19,7 @@
 package org.apache.iceberg.flink.sink;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -43,8 +44,6 @@ import org.apache.flink.table.runtime.typeutils.SortedMapTypeInfo;
 import org.apache.iceberg.ManifestFile;
 import org.apache.iceberg.PartitionKey;
 import org.apache.iceberg.SnapshotUpdate;
-import org.apache.iceberg.Table;
-import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.flink.TableLoader;
 import org.apache.iceberg.flink.data.PartitionWriteResult;
 import org.apache.iceberg.flink.util.PartitionCommitTriggerUtils;
@@ -54,12 +53,10 @@ import org.apache.iceberg.relocated.com.google.common.collect.Maps;
 import org.apache.iceberg.relocated.com.google.common.collect.Sets;
 import org.apache.iceberg.types.Comparators;
 import org.apache.iceberg.types.Types;
-import org.apache.iceberg.util.PropertyUtil;
 
-class IcebergFilesPartitionCommitter extends IcebergFilesCommitter<PartitionWriteResult> {
+class IcebergPartitionCommitter extends IcebergFilesCommitter<PartitionWriteResult> {
   private static final long serialVersionUID = 1L;
   protected static final byte[] EMPTY_MANIFEST_DATA = new byte[0];
-  protected static final long INITIAL_WATERMARK = -1L;
 
   protected static final String FLINK_WATERMARK = "flink.watermark";
 
@@ -81,61 +78,43 @@ class IcebergFilesPartitionCommitter extends IcebergFilesCommitter<PartitionWrit
   private transient List<PartitionCommitPolicy> policies;
 
   private transient long currentWatermark;
-  private final String commitDelayString;
-  private final String watermarkZoneID;
+  private final Duration commitDelay;
+  private final String watermarkZoneId;
   private final String extractorPattern;
   private final String formatterPattern;
   private final String policyKind;
   private final String policyClass;
+  private final String successFileName;
 
   private final Set<PartitionKey> pendingCommitPartitionKeys = Sets.newHashSet();
 
-  IcebergFilesPartitionCommitter(
+  IcebergPartitionCommitter(
       TableLoader tableLoader,
       boolean replacePartitions,
       Map<String, String> snapshotProperties,
       Integer workerPoolSize,
-      String branch) {
+      String branch,
+      Duration commitDelay,
+      String watermarkZoneId,
+      String extractorPattern,
+      String formatterPattern,
+      String policyKind,
+      String policyClass,
+      String successFileName) {
     super(tableLoader, replacePartitions, snapshotProperties, workerPoolSize, branch);
 
-    tableLoader.open();
-    Table table = tableLoader.loadTable();
-
-    this.commitDelayString =
-        PropertyUtil.propertyAsString(
-            table.properties(),
-            TableProperties.SINK_PARTITION_COMMIT_DELAY,
-            TableProperties.SINK_PARTITION_COMMIT_DELAY_DEFAULT);
-    this.watermarkZoneID =
-        PropertyUtil.propertyAsString(
-            table.properties(),
-            TableProperties.SINK_PARTITION_COMMIT_WATERMARK_TIME_ZONE,
-            TableProperties.SINK_PARTITION_COMMIT_WATERMARK_TIME_ZONE_DEFAULT);
-    this.extractorPattern =
-        PropertyUtil.propertyAsString(
-            table.properties(), TableProperties.PARTITION_TIME_EXTRACTOR_TIMESTAMP_PATTERN, null);
-    this.formatterPattern =
-        PropertyUtil.propertyAsString(
-            table.properties(), TableProperties.PARTITION_TIME_EXTRACTOR_TIMESTAMP_FORMATTER, null);
-    this.policyKind =
-        PropertyUtil.propertyAsString(
-            table.properties(),
-            TableProperties.SINK_PARTITION_COMMIT_POLICY_KIND,
-            TableProperties.SINK_PARTITION_COMMIT_POLICY_KIND_DEFAULT);
-    this.policyClass =
-        PropertyUtil.propertyAsString(
-            table.properties(), TableProperties.SINK_PARTITION_COMMIT_POLICY_CLASS, null);
+    this.commitDelay = commitDelay;
+    this.watermarkZoneId = watermarkZoneId;
+    this.extractorPattern = extractorPattern;
+    this.formatterPattern = formatterPattern;
+    this.policyKind = policyKind;
+    this.policyClass = policyClass;
+    this.successFileName = successFileName;
   }
 
   @Override
-  void initCheckpointState(StateInitializationContext context, Table table) throws Exception {
+  void initCheckpointState(StateInitializationContext context) throws Exception {
     this.checkpointsState = context.getOperatorStateStore().getListState(STATE_DESCRIPTOR);
-
-    String successFileName =
-        PropertyUtil.propertyAsString(
-            table.properties(),
-            TableProperties.SINK_PARTITION_COMMIT_SUCCESS_FILE_NAME,
-            TableProperties.SINK_PARTITION_COMMIT_SUCCESS_FILE_NAME_DEFAULT);
 
     PartitionCommitPolicyFactory partitionCommitPolicyFactory =
         new PartitionCommitPolicyFactory(policyKind, policyClass, successFileName);
@@ -144,11 +123,10 @@ class IcebergFilesPartitionCommitter extends IcebergFilesCommitter<PartitionWrit
   }
 
   @Override
-  void commitUncommittedDataFiles(String jobId, String operatorId, long checkpointId)
-      throws Exception {
+  void commitUncommittedDataFiles(String jobId, long checkpointId) throws Exception {
 
     this.lastWatermark =
-        getMaxCommittedSummaryValue(table(), jobId, operatorId, branch(), FLINK_WATERMARK);
+        getMaxCommittedSummaryValue(table(), jobId, operatorId(), branch(), FLINK_WATERMARK);
 
     NavigableMap<Long, Map<PartitionKey, byte[]>> uncommittedDataFiles =
         Maps.newTreeMap(checkpointsState.get().iterator().next());
@@ -162,17 +140,17 @@ class IcebergFilesPartitionCommitter extends IcebergFilesCommitter<PartitionWrit
                       long partitionTime =
                           PartitionCommitTriggerUtils.partitionTimeExtract(
                                   longEntry.getKey(), extractorPattern, formatterPattern)
-                              .atZone(ZoneId.of(watermarkZoneID))
+                              .atZone(ZoneId.of(watermarkZoneId))
                               .toInstant()
                               .toEpochMilli();
                       return PartitionCommitTriggerUtils.isPartitionCommittable(
-                          lastWatermark, partitionTime, commitDelayString);
+                          lastWatermark, partitionTime, commitDelay);
                     }));
 
     if (!uncommittedDataFiles.isEmpty()) {
       // Committed all uncommitted data files from the old flink job to iceberg table.
       long maxUncommittedCheckpointId = uncommittedDataFiles.lastKey();
-      commitUpToCheckpoint(uncommittedDataFiles, jobId, operatorId, maxUncommittedCheckpointId);
+      commitUpToCheckpoint(uncommittedDataFiles, jobId, operatorId(), maxUncommittedCheckpointId);
     }
 
     if (!uncommittedDataFiles.isEmpty()) {
@@ -200,9 +178,8 @@ class IcebergFilesPartitionCommitter extends IcebergFilesCommitter<PartitionWrit
   }
 
   @Override
-  void commitUpToCheckpoint(String operatorId, long checkpointId, String flinkJobId)
-      throws IOException {
-    commitUpToCheckpoint(dataFilesPerCheckpoint, flinkJobId, operatorId, checkpointId);
+  void commitUpToCheckpoint(long checkpointId) throws IOException {
+    commitUpToCheckpoint(dataFilesPerCheckpoint, flinkJobId(), operatorId(), checkpointId);
   }
 
   private void commitUpToCheckpoint(
@@ -244,12 +221,12 @@ class IcebergFilesPartitionCommitter extends IcebergFilesCommitter<PartitionWrit
         long partitionTime =
             PartitionCommitTriggerUtils.partitionTimeExtract(
                     next.getKey(), extractorPattern, formatterPattern)
-                .atZone(ZoneId.of(watermarkZoneID))
+                .atZone(ZoneId.of(watermarkZoneId))
                 .toInstant()
                 .toEpochMilli();
 
         if (PartitionCommitTriggerUtils.isPartitionCommittable(
-            currentWatermark, partitionTime, commitDelayString)) {
+            currentWatermark, partitionTime, commitDelay)) {
           builder.add(writeResult);
           manifests.addAll(deltaManifests.manifests());
           pendingCommitPartitionKeys.add(writeResult.partitionKey());
@@ -278,7 +255,7 @@ class IcebergFilesPartitionCommitter extends IcebergFilesCommitter<PartitionWrit
   }
 
   @Override
-  public void endInput(String operatorId, long checkpointId, String flinkJobId) throws IOException {
+  public void endInput(String operatorId, long checkpointId) throws IOException {
     this.currentWatermark = Watermark.MAX_WATERMARK.getTimestamp();
     Map<PartitionKey, byte[]> result = writeToManifest(checkpointId);
     if (result != null) {
@@ -286,8 +263,7 @@ class IcebergFilesPartitionCommitter extends IcebergFilesCommitter<PartitionWrit
     }
 
     writeResultsOfCurrentCkpt.clear();
-
-    commitUpToCheckpoint(dataFilesPerCheckpoint, flinkJobId, operatorId, checkpointId);
+    commitUpToCheckpoint(dataFilesPerCheckpoint, flinkJobId(), operatorId, checkpointId);
   }
 
   @Override
@@ -300,8 +276,8 @@ class IcebergFilesPartitionCommitter extends IcebergFilesCommitter<PartitionWrit
       if (PartitionCommitTriggerUtils.isPartitionCommittable(
           currentWatermark,
           partitionKey,
-          commitDelayString,
-          watermarkZoneID,
+          commitDelay,
+          watermarkZoneId,
           extractorPattern,
           formatterPattern)) {
 

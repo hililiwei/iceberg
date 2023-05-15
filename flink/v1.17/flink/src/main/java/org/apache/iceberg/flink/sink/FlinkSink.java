@@ -56,7 +56,6 @@ import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.SerializableTable;
 import org.apache.iceberg.Table;
-import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.flink.FlinkSchemaUtil;
 import org.apache.iceberg.flink.FlinkWriteConf;
 import org.apache.iceberg.flink.FlinkWriteOptions;
@@ -69,7 +68,6 @@ import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.iceberg.relocated.com.google.common.collect.Maps;
 import org.apache.iceberg.relocated.com.google.common.collect.Sets;
 import org.apache.iceberg.types.TypeUtil;
-import org.apache.iceberg.util.PropertyUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -425,22 +423,25 @@ public class FlinkSink {
 
     private SingleOutputStreamOperator<Void> appendCommitter(
         SingleOutputStreamOperator<WriteResult> writerStream) {
-      OneInputStreamOperator filesCommitter = null;
+      OneInputStreamOperator filesCommitter;
 
-      boolean partitionCommitEnabled =
-          PropertyUtil.propertyAsBoolean(
-              table.properties(),
-              TableProperties.SINK_PARTITION_COMMIT_ENABLED,
-              TableProperties.SINK_PARTITION_COMMIT_ENABLED_DEFAULT);
+      boolean partitionCommitEnabled = flinkWriteConf.partitionCommitEnabled();
 
       if (partitionCommitEnabled) {
         filesCommitter =
-            new IcebergFilesPartitionCommitter(
+            new IcebergPartitionCommitter(
                 tableLoader,
                 flinkWriteConf.overwriteMode(),
                 snapshotProperties,
                 flinkWriteConf.workerPoolSize(),
-                flinkWriteConf.branch());
+                flinkWriteConf.branch(),
+                flinkWriteConf.partitionCommitDelay(),
+                flinkWriteConf.partitionCommitWatermarkTimeZone(),
+                flinkWriteConf.partitionTimeExtractorTimestampPattern(),
+                flinkWriteConf.partitionTimeExtractorTimestampFormatter(),
+                flinkWriteConf.partitionCommitPolicyKind(),
+                flinkWriteConf.partitionCommitPolicyClass(),
+                flinkWriteConf.partitionCommitSuccessFileName());
       } else {
         filesCommitter =
             new IcebergCheckpointCommitter(
@@ -483,11 +484,7 @@ public class FlinkSink {
         }
       }
 
-      boolean partitionCommitEnabled =
-          PropertyUtil.propertyAsBoolean(
-              table.properties(),
-              TableProperties.SINK_PARTITION_COMMIT_ENABLED,
-              TableProperties.SINK_PARTITION_COMMIT_ENABLED_DEFAULT);
+      boolean partitionCommitEnabled = flinkWriteConf.partitionCommitEnabled();
 
       OneInputStreamOperator<RowData, WriteResult> streamWriter;
 
@@ -623,7 +620,12 @@ public class FlinkSink {
             format,
             writeProperties(table, format, flinkWriteConf),
             equalityFieldIds,
-            flinkWriteConf.upsertMode());
+            flinkWriteConf.upsertMode(),
+            flinkWriteConf.partitionCommitEnabled(),
+            flinkWriteConf.partitionCommitDelay(),
+            flinkWriteConf.partitionCommitWatermarkTimeZone(),
+            flinkWriteConf.partitionTimeExtractorTimestampPattern(),
+            flinkWriteConf.partitionTimeExtractorTimestampFormatter());
 
     return new IcebergPartitionStreamWriter(table.name(), taskWriterFactory);
   }

@@ -21,6 +21,7 @@ package org.apache.iceberg.flink.sink;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.time.Duration;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -69,8 +70,8 @@ public class PartitionCommitWriter implements TaskWriter<RowData> {
 
   private final PartitionKey partitionKey;
   private final RowDataWrapper wrapper;
-  private final String commitDelayString;
-  private final String watermarkZoneID;
+  private final Duration commitDelay;
+  private final String watermarkZoneId;
   private final String extractorPattern;
   private final String formatterPattern;
   private long watermark;
@@ -84,8 +85,8 @@ public class PartitionCommitWriter implements TaskWriter<RowData> {
       long targetFileSize,
       Schema schema,
       RowType flinkSchema,
-      String commitDelayString,
-      String watermarkZoneID,
+      Duration commitDelay,
+      String watermarkZoneId,
       String extractorPattern,
       String formatterPattern) {
     this.format = format;
@@ -96,8 +97,8 @@ public class PartitionCommitWriter implements TaskWriter<RowData> {
 
     this.partitionKey = new PartitionKey(spec, schema);
     this.wrapper = new RowDataWrapper(flinkSchema, schema.asStruct());
-    this.commitDelayString = commitDelayString;
-    this.watermarkZoneID = watermarkZoneID;
+    this.commitDelay = commitDelay;
+    this.watermarkZoneId = watermarkZoneId;
     this.extractorPattern = extractorPattern;
     this.formatterPattern = formatterPattern;
   }
@@ -151,8 +152,8 @@ public class PartitionCommitWriter implements TaskWriter<RowData> {
       if (PartitionCommitTriggerUtils.isPartitionCommittable(
           watermark,
           tempPartitionKey,
-          commitDelayString,
-          watermarkZoneID,
+          commitDelay,
+          watermarkZoneId,
           extractorPattern,
           formatterPattern)) {
 
@@ -195,14 +196,15 @@ public class PartitionCommitWriter implements TaskWriter<RowData> {
       if (PartitionCommitTriggerUtils.isPartitionCommittable(
           watermark,
           tempPartitionKey,
-          commitDelayString,
-          watermarkZoneID,
+          commitDelay,
+          watermarkZoneId,
           extractorPattern,
           formatterPattern)) {
         PartitionedRollingFileWriter writer = writers.get(tempPartitionKey);
         if (writer != null) {
           writer.close();
         }
+
         writers.remove(tempPartitionKey);
       }
     }
@@ -307,8 +309,8 @@ public class PartitionCommitWriter implements TaskWriter<RowData> {
     }
 
     @Override
-    DataWriter<RowData> newWriter(EncryptedOutputFile file, StructLike partitionKey) {
-      return appenderFactory.newDataWriter(file, format, partitionKey);
+    DataWriter<RowData> newWriter(EncryptedOutputFile file, StructLike partition) {
+      return appenderFactory.newDataWriter(file, format, partition);
     }
 
     @Override

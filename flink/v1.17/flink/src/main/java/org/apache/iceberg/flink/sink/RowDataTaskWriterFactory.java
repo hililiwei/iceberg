@@ -18,6 +18,7 @@
  */
 package org.apache.iceberg.flink.sink;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import org.apache.flink.table.data.RowData;
@@ -27,7 +28,6 @@ import org.apache.iceberg.PartitionKey;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.Table;
-import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.flink.RowDataWrapper;
 import org.apache.iceberg.io.FileAppenderFactory;
 import org.apache.iceberg.io.FileIO;
@@ -39,7 +39,6 @@ import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.relocated.com.google.common.collect.Sets;
 import org.apache.iceberg.types.TypeUtil;
 import org.apache.iceberg.util.ArrayUtil;
-import org.apache.iceberg.util.PropertyUtil;
 
 public class RowDataTaskWriterFactory implements TaskWriterFactory<RowData> {
   private final Table table;
@@ -55,6 +54,12 @@ public class RowDataTaskWriterFactory implements TaskWriterFactory<RowData> {
 
   private transient OutputFileFactory outputFileFactory;
 
+  private final boolean partitionCommitEnabled;
+  private final Duration commitDelay;
+  private final String watermarkZoneId;
+  private final String extractorPattern;
+  private final String formatterPattern;
+
   public RowDataTaskWriterFactory(
       Table table,
       RowType flinkSchema,
@@ -62,7 +67,12 @@ public class RowDataTaskWriterFactory implements TaskWriterFactory<RowData> {
       FileFormat format,
       Map<String, String> writeProperties,
       List<Integer> equalityFieldIds,
-      boolean upsert) {
+      boolean upsert,
+      boolean partitionCommitEnabled,
+      Duration commitDelay,
+      String watermarkZoneId,
+      String extractorPattern,
+      String formatterPattern) {
     this.table = table;
     this.schema = table.schema();
     this.flinkSchema = flinkSchema;
@@ -72,6 +82,12 @@ public class RowDataTaskWriterFactory implements TaskWriterFactory<RowData> {
     this.format = format;
     this.equalityFieldIds = equalityFieldIds;
     this.upsert = upsert;
+
+    this.partitionCommitEnabled = partitionCommitEnabled;
+    this.commitDelay = commitDelay;
+    this.watermarkZoneId = watermarkZoneId;
+    this.extractorPattern = extractorPattern;
+    this.formatterPattern = formatterPattern;
 
     if (equalityFieldIds == null || equalityFieldIds.isEmpty()) {
       this.appenderFactory =
@@ -107,6 +123,29 @@ public class RowDataTaskWriterFactory implements TaskWriterFactory<RowData> {
     }
   }
 
+  public RowDataTaskWriterFactory(
+      Table table,
+      RowType flinkSchema,
+      long targetFileSizeBytes,
+      FileFormat format,
+      Map<String, String> writeProjhperties,
+      List<Integer> equalityFieldIds,
+      boolean upsert) {
+    this(
+        table,
+        flinkSchema,
+        targetFileSizeBytes,
+        format,
+        writeProjhperties,
+        equalityFieldIds,
+        upsert,
+        false,
+        null,
+        null,
+        null,
+        null);
+  }
+
   @Override
   public void initialize(int taskId, int attemptId) {
     this.outputFileFactory =
@@ -119,12 +158,6 @@ public class RowDataTaskWriterFactory implements TaskWriterFactory<RowData> {
         outputFileFactory,
         "The outputFileFactory shouldn't be null if we have invoked the initialize().");
 
-    boolean partitionCommitEnabled =
-        PropertyUtil.propertyAsBoolean(
-            table.properties(),
-            TableProperties.SINK_PARTITION_COMMIT_ENABLED,
-            TableProperties.SINK_PARTITION_COMMIT_ENABLED_DEFAULT);
-
     if (equalityFieldIds == null || equalityFieldIds.isEmpty()) {
       // Initialize a task writer to write INSERT only.
       if (spec.isUnpartitioned()) {
@@ -132,27 +165,6 @@ public class RowDataTaskWriterFactory implements TaskWriterFactory<RowData> {
             spec, format, appenderFactory, outputFileFactory, io, targetFileSizeBytes);
       } else {
         if (partitionCommitEnabled) {
-          String commitDelayString =
-              PropertyUtil.propertyAsString(
-                  table.properties(),
-                  TableProperties.SINK_PARTITION_COMMIT_DELAY,
-                  TableProperties.SINK_PARTITION_COMMIT_DELAY_DEFAULT);
-          String watermarkzoneID =
-              PropertyUtil.propertyAsString(
-                  table.properties(),
-                  TableProperties.SINK_PARTITION_COMMIT_WATERMARK_TIME_ZONE,
-                  TableProperties.SINK_PARTITION_COMMIT_WATERMARK_TIME_ZONE_DEFAULT);
-          String extractorPattern =
-              PropertyUtil.propertyAsString(
-                  table.properties(),
-                  TableProperties.PARTITION_TIME_EXTRACTOR_TIMESTAMP_PATTERN,
-                  null);
-          String formatterPattern =
-              PropertyUtil.propertyAsString(
-                  table.properties(),
-                  TableProperties.PARTITION_TIME_EXTRACTOR_TIMESTAMP_FORMATTER,
-                  null);
-
           return new PartitionCommitWriter(
               spec,
               format,
@@ -162,8 +174,8 @@ public class RowDataTaskWriterFactory implements TaskWriterFactory<RowData> {
               targetFileSizeBytes,
               schema,
               flinkSchema,
-              commitDelayString,
-              watermarkzoneID,
+              commitDelay,
+              watermarkZoneId,
               extractorPattern,
               formatterPattern);
         } else {

@@ -22,7 +22,6 @@ import org.apache.iceberg.PartitionKey;
 import org.apache.iceberg.Table;
 
 public interface PartitionCommitPolicy {
-
   String SUCCESS_FILE = "success-file";
   String CUSTOM = "custom";
   String DEFAULT = "default";

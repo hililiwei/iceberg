@@ -35,7 +35,6 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.table.runtime.typeutils.SortedMapTypeInfo;
 import org.apache.iceberg.ManifestFile;
 import org.apache.iceberg.SnapshotUpdate;
-import org.apache.iceberg.Table;
 import org.apache.iceberg.flink.TableLoader;
 import org.apache.iceberg.io.WriteResult;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
@@ -77,19 +76,18 @@ class IcebergCheckpointCommitter extends IcebergFilesCommitter<WriteResult> {
   }
 
   @Override
-  void initCheckpointState(StateInitializationContext context, Table table) throws Exception {
+  void initCheckpointState(StateInitializationContext context) throws Exception {
     this.checkpointsState = context.getOperatorStateStore().getListState(STATE_DESCRIPTOR);
   }
 
   @Override
-  void commitUncommittedDataFiles(String jobId, String operatorId, long checkpointId)
-      throws Exception {
+  void commitUncommittedDataFiles(String jobId, long checkpointId) throws Exception {
     NavigableMap<Long, byte[]> uncommittedDataFiles =
         Maps.newTreeMap(checkpointsState.get().iterator().next()).tailMap(checkpointId, false);
     if (!uncommittedDataFiles.isEmpty()) {
       // Committed all uncommitted data files from the old flink job to iceberg table.
       long maxUncommittedCheckpointId = uncommittedDataFiles.lastKey();
-      commitUpToCheckpoint(uncommittedDataFiles, jobId, operatorId, maxUncommittedCheckpointId);
+      commitUpToCheckpoint(uncommittedDataFiles, jobId, operatorId(), maxUncommittedCheckpointId);
     }
   }
 
@@ -107,9 +105,8 @@ class IcebergCheckpointCommitter extends IcebergFilesCommitter<WriteResult> {
   }
 
   @Override
-  void commitUpToCheckpoint(String operatorId, long checkpointId, String flinkJobId)
-      throws IOException {
-    commitUpToCheckpoint(dataFilesPerCheckpoint, flinkJobId, operatorId, checkpointId);
+  void commitUpToCheckpoint(long checkpointId) throws IOException {
+    commitUpToCheckpoint(dataFilesPerCheckpoint, flinkJobId(), operatorId(), checkpointId);
   }
 
   private void commitUpToCheckpoint(
@@ -156,11 +153,11 @@ class IcebergCheckpointCommitter extends IcebergFilesCommitter<WriteResult> {
   }
 
   @Override
-  public void endInput(String operatorId, long checkpointId, String flinkJobId) throws IOException {
+  public void endInput(String operatorId, long checkpointId) throws IOException {
     dataFilesPerCheckpoint.put(checkpointId, writeToManifest(checkpointId));
     writeResultsOfCurrentCkpt.clear();
 
-    commitUpToCheckpoint(dataFilesPerCheckpoint, flinkJobId, operatorId, checkpointId);
+    commitUpToCheckpoint(dataFilesPerCheckpoint, flinkJobId(), operatorId, checkpointId);
   }
 
   /**

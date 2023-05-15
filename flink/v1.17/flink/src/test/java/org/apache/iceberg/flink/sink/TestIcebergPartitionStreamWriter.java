@@ -45,6 +45,7 @@ import org.apache.iceberg.data.GenericRecord;
 import org.apache.iceberg.data.Record;
 import org.apache.iceberg.flink.FlinkSchemaUtil;
 import org.apache.iceberg.flink.FlinkWriteConf;
+import org.apache.iceberg.flink.FlinkWriteOptions;
 import org.apache.iceberg.flink.RowDataConverter;
 import org.apache.iceberg.io.WriteResult;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableSet;
@@ -98,9 +99,9 @@ public class TestIcebergPartitionStreamWriter {
     table
         .updateProperties()
         .set(TableProperties.DEFAULT_FILE_FORMAT, format.name())
-        .set(TableProperties.SINK_PARTITION_COMMIT_ENABLED, "true")
-        .set(TableProperties.SINK_PARTITION_COMMIT_DELAY, "1h")
-        .set(TableProperties.PARTITION_TIME_EXTRACTOR_TIMESTAMP_PATTERN, "$d $h:00:00")
+        .set(FlinkWriteOptions.SINK_PARTITION_COMMIT_ENABLED.key(), "true")
+        .set(FlinkWriteOptions.SINK_PARTITION_COMMIT_DELAY.key(), "1h")
+        .set(FlinkWriteOptions.PARTITION_TIME_EXTRACTOR_TIMESTAMP_PATTERN.key(), "$d $h:00:00")
         .commit();
   }
 

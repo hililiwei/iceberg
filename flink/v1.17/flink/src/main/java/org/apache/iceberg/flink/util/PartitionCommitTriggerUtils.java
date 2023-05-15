@@ -18,6 +18,7 @@
  */
 package org.apache.iceberg.flink.util;
 
+import java.io.File;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
@@ -72,23 +73,22 @@ public class PartitionCommitTriggerUtils {
           .withResolverStyle(ResolverStyle.LENIENT);
 
   public static boolean isPartitionCommittable(
-      long watermark, long partitionTime, String commitDelayString) {
-    long commitDelay = toDuration(commitDelayString).toMillis();
-    return watermark > partitionTime + commitDelay;
+      long watermark, long partitionTime, Duration commitDelay) {
+    return watermark > partitionTime + commitDelay.toMillis();
   }
 
   public static boolean isPartitionCommittable(
       long watermark,
-      PartitionKey newPartitionKey,
-      String commitDelayString,
-      String watermarkZoneID,
+      PartitionKey partitionKey,
+      Duration commitDelay,
+      String watermarkZoneId,
       String extractorPattern,
       String formatterPattern) {
-    ZoneId watermarkTimeZone = ZoneId.of(watermarkZoneID == null ? "UTC" : watermarkZoneID);
+    ZoneId watermarkTimeZone = ZoneId.of(watermarkZoneId == null ? "UTC" : watermarkZoneId);
     LocalDateTime partitionTime =
-        partitionTimeExtract(newPartitionKey, extractorPattern, formatterPattern);
+        partitionTimeExtract(partitionKey, extractorPattern, formatterPattern);
     long epochPartTime = partitionTime.atZone(watermarkTimeZone).toInstant().toEpochMilli();
-    return isPartitionCommittable(watermark, epochPartTime, commitDelayString);
+    return isPartitionCommittable(watermark, epochPartTime, commitDelay);
   }
 
   public static LocalDateTime partitionTimeExtract(
@@ -98,64 +98,50 @@ public class PartitionCommitTriggerUtils {
       partitionPath =
           URLDecoder.decode(URLEncoder.encode(newPartitionKey.toPath(), "UTF-8"), "UTF-8");
     } catch (UnsupportedEncodingException e) {
-      throw new RuntimeException("Invalid partition key: ", e);
+      throw new RuntimeException("Invalid partition key.", e);
     }
+
     List<String> partitionKeys = Lists.newArrayList();
     List<String> partitionValues = Lists.newArrayList();
-    Iterable<String> partitionPathMap = Splitter.on('/').split(partitionPath);
-    for (String s : partitionPathMap) {
-      List<String> pair = Splitter.on('=').splitToList(s);
+    Iterable<String> partitionPathMap = Splitter.on(File.separator).split(partitionPath);
+    for (String partition : partitionPathMap) {
+      List<String> pair = Splitter.on('=').splitToList(partition);
       partitionKeys.add(pair.get(0));
       try {
         partitionValues.add(URLDecoder.decode(pair.get(1), "UTF-8"));
       } catch (UnsupportedEncodingException e) {
-        throw new RuntimeException("Invalid partition key: ", e);
+        throw new RuntimeException("Invalid partition key.", e);
       }
     }
 
-    String timestampString;
+    String timestamp;
     if (extractorPattern == null) {
-      timestampString = partitionValues.get(0);
+      timestamp = partitionValues.get(0);
     } else {
-      timestampString = extractorPattern;
+      timestamp = extractorPattern;
       for (int i = 0; i < partitionKeys.size(); i++) {
-        timestampString =
-            timestampString.replaceAll("\\$" + partitionKeys.get(i), partitionValues.get(i));
+        timestamp = timestamp.replaceAll("\\$" + partitionKeys.get(i), partitionValues.get(i));
       }
     }
-    return toLocalDateTime(timestampString, formatterPattern);
+
+    return toLocalDateTime(timestamp, formatterPattern);
   }
 
-  public static LocalDateTime toLocalDateTime(String timestampString, String formatterPattern) {
+  public static LocalDateTime toLocalDateTime(String timestamp, String formatterPattern) {
     if (formatterPattern == null) {
-      return toLocalDateTimeDefault(timestampString);
+      try {
+        return LocalDateTime.parse(timestamp, TIMESTAMP_FORMATTER);
+      } catch (DateTimeParseException e) {
+        return LocalDateTime.of(LocalDate.parse(timestamp, DATE_FORMATTER), LocalTime.MIDNIGHT);
+      }
     }
 
     DateTimeFormatter dateTimeFormatter =
         DateTimeFormatter.ofPattern(formatterPattern, Locale.ROOT);
     try {
-      return LocalDateTime.parse(timestampString, dateTimeFormatter);
+      return LocalDateTime.parse(timestamp, dateTimeFormatter);
     } catch (DateTimeParseException e) {
-      return LocalDateTime.of(
-          LocalDate.parse(timestampString, dateTimeFormatter), LocalTime.MIDNIGHT);
+      return LocalDateTime.of(LocalDate.parse(timestamp, dateTimeFormatter), LocalTime.MIDNIGHT);
     }
-  }
-
-  public static LocalDateTime toLocalDateTimeDefault(String timestampString) {
-    try {
-      return LocalDateTime.parse(timestampString, TIMESTAMP_FORMATTER);
-    } catch (DateTimeParseException e) {
-      return LocalDateTime.of(LocalDate.parse(timestampString, DATE_FORMATTER), LocalTime.MIDNIGHT);
-    }
-  }
-
-  public static Duration toDuration(String delayString) {
-    if (delayString.endsWith("h") || delayString.endsWith("m") || delayString.endsWith("s")) {
-      return Duration.parse("PT" + delayString.toUpperCase());
-    } else if (delayString.endsWith("d")) {
-      return Duration.parse("P" + delayString.toUpperCase());
-    }
-
-    throw new IllegalArgumentException("Invalid delay string: " + delayString);
   }
 }

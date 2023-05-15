@@ -115,6 +115,14 @@ abstract class IcebergFilesCommitter<T extends WriteResult> extends AbstractStre
     return branch;
   }
 
+  protected String flinkJobId() {
+    return flinkJobId;
+  }
+
+  protected String operatorId() {
+    return operatorUniqueId;
+  }
+
   protected ManifestOutputFileFactory manifestOutputFileFactory() {
     return manifestOutputFileFactory;
   }
@@ -146,7 +154,7 @@ abstract class IcebergFilesCommitter<T extends WriteResult> extends AbstractStre
             table, flinkJobId, operatorUniqueId, subTaskId, attemptId);
     this.maxCommittedCheckpointId = INITIAL_CHECKPOINT_ID;
 
-    initCheckpointState(context, table);
+    initCheckpointState(context);
 
     this.jobIdState = context.getOperatorStateStore().getListState(JOB_ID_DESCRIPTOR);
     if (context.isRestored()) {
@@ -173,15 +181,13 @@ abstract class IcebergFilesCommitter<T extends WriteResult> extends AbstractStre
       this.maxCommittedCheckpointId =
           getMaxCommittedCheckpointId(table, restoredFlinkJobId, operatorUniqueId, branch);
 
-      commitUncommittedDataFiles(restoredFlinkJobId, operatorUniqueId, maxCommittedCheckpointId);
+      commitUncommittedDataFiles(restoredFlinkJobId, maxCommittedCheckpointId);
     }
   }
 
-  abstract void initCheckpointState(StateInitializationContext context, Table table)
-      throws Exception;
+  abstract void initCheckpointState(StateInitializationContext context) throws Exception;
 
-  abstract void commitUncommittedDataFiles(String jobId, String operatorId, long checkpointId)
-      throws Exception;
+  abstract void commitUncommittedDataFiles(String jobId, long checkpointId) throws Exception;
 
   @Override
   public void snapshotState(StateSnapshotContext context) throws Exception {
@@ -218,7 +224,7 @@ abstract class IcebergFilesCommitter<T extends WriteResult> extends AbstractStre
     // Besides, we need to maintain the max-committed-checkpoint-id to be increasing.
     if (checkpointId > maxCommittedCheckpointId) {
       LOG.info("Checkpoint {} completed. Attempting commit.", checkpointId);
-      commitUpToCheckpoint(operatorUniqueId, checkpointId, flinkJobId);
+      commitUpToCheckpoint(checkpointId);
       this.maxCommittedCheckpointId = checkpointId;
     } else {
       LOG.info(
@@ -228,8 +234,7 @@ abstract class IcebergFilesCommitter<T extends WriteResult> extends AbstractStre
     }
   }
 
-  abstract void commitUpToCheckpoint(String operatorId, long checkpointId, String flinkJobId)
-      throws IOException;
+  abstract void commitUpToCheckpoint(long checkpointId) throws IOException;
 
   protected void commitPendingResult(
       NavigableMap<Long, ? extends WriteResult> pendingResults,
@@ -386,11 +391,10 @@ abstract class IcebergFilesCommitter<T extends WriteResult> extends AbstractStre
   public void endInput() throws IOException {
     // Flush the buffered data files into 'dataFilesPerCheckpoint' firstly.
     long currentCheckpointId = Long.MAX_VALUE;
-    endInput(operatorUniqueId, currentCheckpointId, flinkJobId);
+    endInput(operatorUniqueId, currentCheckpointId);
   }
 
-  abstract void endInput(String operatorId, long checkpointId, String flinkJobId)
-      throws IOException;
+  abstract void endInput(String operatorId, long checkpointId) throws IOException;
 
   @Override
   public void open() throws Exception {

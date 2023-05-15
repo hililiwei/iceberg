@@ -62,7 +62,6 @@ import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.SnapshotRef;
 import org.apache.iceberg.Table;
-import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.TableTestBase;
 import org.apache.iceberg.data.GenericRecord;
 import org.apache.iceberg.data.IcebergGenerics;
@@ -70,6 +69,8 @@ import org.apache.iceberg.data.Record;
 import org.apache.iceberg.deletes.EqualityDeleteWriter;
 import org.apache.iceberg.encryption.EncryptedOutputFile;
 import org.apache.iceberg.flink.FlinkSchemaUtil;
+import org.apache.iceberg.flink.FlinkWriteConf;
+import org.apache.iceberg.flink.FlinkWriteOptions;
 import org.apache.iceberg.flink.RowDataConverter;
 import org.apache.iceberg.flink.TestHelpers;
 import org.apache.iceberg.flink.TestTableLoader;
@@ -145,10 +146,10 @@ public class TestIcebergPartitionFilesCommitter extends TableTestBase {
         .set(DEFAULT_FILE_FORMAT, format.name())
         .set(FLINK_MANIFEST_LOCATION, flinkManifestFolder.getAbsolutePath())
         .set(MAX_CONTINUOUS_EMPTY_COMMITS, "1")
-        .set(TableProperties.SINK_PARTITION_COMMIT_ENABLED, "true")
-        .set(TableProperties.SINK_PARTITION_COMMIT_DELAY, "1h")
-        .set(TableProperties.SINK_PARTITION_COMMIT_POLICY_KIND, "success-file")
-        .set(TableProperties.PARTITION_TIME_EXTRACTOR_TIMESTAMP_PATTERN, "$d $h:00:00")
+        .set(FlinkWriteOptions.SINK_PARTITION_COMMIT_ENABLED.key(), "true")
+        .set(FlinkWriteOptions.SINK_PARTITION_COMMIT_DELAY.key(), "1h")
+        .set(FlinkWriteOptions.SINK_PARTITION_COMMIT_POLICY_KIND.key(), "success-file")
+        .set(FlinkWriteOptions.PARTITION_TIME_EXTRACTOR_TIMESTAMP_PATTERN.key(), "$d $h:00:00")
         .commit();
   }
 
@@ -643,7 +644,6 @@ public class TestIcebergPartitionFilesCommitter extends TableTestBase {
                   partitionKey.copy()),
               partitionKey.copy()),
           ++timestamp);
-
       partitionKey.partition(record3);
       harness.processElement(
           of(
@@ -665,13 +665,11 @@ public class TestIcebergPartitionFilesCommitter extends TableTestBase {
       harness.initializeState(snapshot);
       harness.open();
       assertSnapshot(nonTimeField ? 3 : 2, Lists.newArrayList(), 0, jobId, -1, operatorId);
-
       harness.processWatermark(
           LocalDateTime.of(2022, 2, 2, 11, 5).toInstant(ZoneOffset.UTC).toEpochMilli());
       harness.snapshot(++checkpointId, ++timestamp); // shot2
       harness.notifyOfCompletedCheckpoint(checkpointId);
       assertSnapshot(1, expectedRecords, 1, jobId, checkpointId, operatorId);
-
       partitionKey.partition(record4);
       harness.processElement(
           of(
@@ -694,21 +692,17 @@ public class TestIcebergPartitionFilesCommitter extends TableTestBase {
       harness.setup();
       harness.initializeState(snapshot);
       harness.open();
-
       assertFlinkManifests(2);
       assertMaxCommittedCheckpointId(jobId, operatorId, checkpointId);
       assertMaxCommittedCheckpointId(newJobId, operatorId, -1);
       assertTableRecords(table, expectedRecords);
       expectedRecords.add(record3);
       expectedRecords.add(record4);
-
       harness.processWatermark(
           LocalDateTime.of(2022, 2, 2, 13, 15).toInstant(ZoneOffset.UTC).toEpochMilli());
       harness.snapshot(++checkpointId, ++timestamp); // shot4
       harness.notifyOfCompletedCheckpoint(checkpointId);
-
       assertSnapshot(0, expectedRecords, 2, newJobId, checkpointId, operatorId);
-
       expectedRecords.add(record5);
       partitionKey.partition(record5);
       harness.processElement(
@@ -1172,8 +1166,8 @@ public class TestIcebergPartitionFilesCommitter extends TableTestBase {
   public void testEscapingSpecialCharacters() throws Exception {
     table
         .updateProperties()
-        .set(TableProperties.PARTITION_TIME_EXTRACTOR_TIMESTAMP_PATTERN, "$d $h")
-        .set(TableProperties.PARTITION_TIME_EXTRACTOR_TIMESTAMP_FORMATTER, "yyyy MM dd HH")
+        .set(FlinkWriteOptions.PARTITION_TIME_EXTRACTOR_TIMESTAMP_PATTERN.key(), "$d $h")
+        .set(FlinkWriteOptions.PARTITION_TIME_EXTRACTOR_TIMESTAMP_FORMATTER.key(), "yyyy MM dd HH")
         .commit();
 
     long timestamp = 0;
@@ -1403,7 +1397,7 @@ public class TestIcebergPartitionFilesCommitter extends TableTestBase {
 
   private OneInputStreamOperatorTestHarness<WriteResult, Void> createStreamSink(JobID jobID)
       throws Exception {
-    TestOperatorFactory factory = TestOperatorFactory.of(tablePath);
+    TestOperatorFactory factory = TestOperatorFactory.of(tablePath, table);
     return new OneInputStreamOperatorTestHarness<>(factory, createEnvironment(jobID));
   }
 
@@ -1423,34 +1417,48 @@ public class TestIcebergPartitionFilesCommitter extends TableTestBase {
   private static class TestOperatorFactory extends AbstractStreamOperatorFactory<Void>
       implements OneInputStreamOperatorFactory<WriteResult, Void> {
     private final String tablePath;
+    private final Table table;
 
-    private TestOperatorFactory(String tablePath) {
+    private TestOperatorFactory(String tablePath, Table table) {
       this.tablePath = tablePath;
+      this.table = table;
     }
 
-    private static TestOperatorFactory of(String tablePath) {
-      return new TestOperatorFactory(tablePath);
+    private static TestOperatorFactory of(String tablePath, Table table) {
+      return new TestOperatorFactory(tablePath, table);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public <T extends StreamOperator<Void>> T createStreamOperator(
         StreamOperatorParameters<Void> param) {
-      IcebergFilesPartitionCommitter committer =
-          new IcebergFilesPartitionCommitter(
+
+      FlinkWriteConf flinkWriteConf =
+          new FlinkWriteConf(
+              table, ImmutableMap.of(), new org.apache.flink.configuration.Configuration());
+
+      IcebergPartitionCommitter committer =
+          new IcebergPartitionCommitter(
               new TestTableLoader(tablePath),
               false,
               Collections.singletonMap(
                   "flink.test", TestIcebergPartitionFilesCommitter.class.getName()),
               ThreadPools.WORKER_THREAD_POOL_SIZE,
-              SnapshotRef.MAIN_BRANCH);
+              SnapshotRef.MAIN_BRANCH,
+              flinkWriteConf.partitionCommitDelay(),
+              flinkWriteConf.partitionCommitWatermarkTimeZone(),
+              flinkWriteConf.partitionTimeExtractorTimestampPattern(),
+              flinkWriteConf.partitionTimeExtractorTimestampFormatter(),
+              flinkWriteConf.partitionCommitPolicyKind(),
+              flinkWriteConf.partitionCommitPolicyClass(),
+              flinkWriteConf.partitionCommitSuccessFileName());
       committer.setup(param.getContainingTask(), param.getStreamConfig(), param.getOutput());
       return (T) committer;
     }
 
     @Override
     public Class<? extends StreamOperator> getStreamOperatorClass(ClassLoader classLoader) {
-      return IcebergFilesPartitionCommitter.class;
+      return IcebergPartitionCommitter.class;
     }
   }
 }

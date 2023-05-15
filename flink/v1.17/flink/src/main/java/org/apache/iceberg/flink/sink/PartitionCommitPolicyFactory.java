@@ -29,7 +29,6 @@ import org.apache.flink.annotation.Internal;
 /** A factory to create {@link PartitionCommitPolicy} chain. */
 @Internal
 public class PartitionCommitPolicyFactory implements Serializable {
-
   private static final long serialVersionUID = 1L;
 
   private final String policyKind;

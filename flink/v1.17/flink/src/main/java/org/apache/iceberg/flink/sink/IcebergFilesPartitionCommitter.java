@@ -81,12 +81,12 @@ class IcebergFilesPartitionCommitter extends IcebergFilesCommitter<PartitionWrit
   private transient List<PartitionCommitPolicy> policies;
 
   private transient long currentWatermark;
-  private final transient String commitDelayString;
-  private final transient String watermarkZoneID;
-  private final transient String extractorPattern;
-  private final transient String formatterPattern;
-  private final transient String policyKind;
-  private final transient String policyClass;
+  private final String commitDelayString;
+  private final String watermarkZoneID;
+  private final String extractorPattern;
+  private final String formatterPattern;
+  private final String policyKind;
+  private final String policyClass;
 
   private final Set<PartitionKey> pendingCommitPartitionKeys = Sets.newHashSet();
 

@@ -50,6 +50,7 @@ public class PartitionCommitPolicyFactory implements Serializable {
     }
     String[] policyStrings = policyKind.split(",");
     return Arrays.stream(policyStrings)
+        .filter(name -> !name.equalsIgnoreCase(PartitionCommitPolicy.DEFAULT))
         .map(
             name -> {
               switch (name.toLowerCase()) {

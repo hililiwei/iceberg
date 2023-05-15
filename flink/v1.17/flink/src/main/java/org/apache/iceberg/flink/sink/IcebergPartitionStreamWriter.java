@@ -130,10 +130,10 @@ class IcebergPartitionStreamWriter extends AbstractStreamOperator<WriteResult>
 
     List<PartitionWriteResult> results = Lists.newArrayList();
 
-    PartitionWriteResult newResult = (PartitionWriteResult) writer.complete(currentWatermark);
+    PartitionWriteResult newResult = writer.complete(currentWatermark);
     while (newResult != null) {
       results.add(newResult);
-      newResult = (PartitionWriteResult) writer.complete(currentWatermark);
+      newResult = writer.complete(currentWatermark);
     }
 
     for (PartitionWriteResult result : results) {

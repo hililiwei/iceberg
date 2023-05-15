@@ -18,7 +18,9 @@
  */
 package org.apache.iceberg.flink.sink;
 
+import java.io.Closeable;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -32,26 +34,39 @@ import org.apache.iceberg.PartitionKey;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.StructLike;
+import org.apache.iceberg.encryption.EncryptedOutputFile;
 import org.apache.iceberg.flink.RowDataWrapper;
 import org.apache.iceberg.flink.data.PartitionWriteResult;
 import org.apache.iceberg.flink.util.PartitionCommitTriggerUtils;
-import org.apache.iceberg.io.BaseTaskWriter;
 import org.apache.iceberg.io.DataWriter;
 import org.apache.iceberg.io.FileAppenderFactory;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.OutputFileFactory;
+import org.apache.iceberg.io.TaskWriter;
 import org.apache.iceberg.io.WriteResult;
+import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
+import org.apache.iceberg.relocated.com.google.common.collect.Iterables;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.iceberg.relocated.com.google.common.collect.Maps;
 import org.apache.iceberg.relocated.com.google.common.collect.Sets;
 import org.apache.iceberg.util.CharSequenceSet;
+import org.apache.iceberg.util.Tasks;
+import org.apache.iceberg.util.ThreadPools;
 
-public class PartitionCommitWriter extends BaseTaskWriter<RowData> {
+public class PartitionCommitWriter implements TaskWriter<RowData> {
   private final Map<PartitionKey, PartitionedRollingFileWriter> writers = Maps.newHashMap();
   private final Set<PartitionKey> partitionKeys = Sets.newHashSet();
   private final Map<PartitionKey, List<DataFile>> completedDataFiles = Maps.newHashMap();
   private final Map<PartitionKey, List<DeleteFile>> completedDeleteFiles = Maps.newHashMap();
   private final Map<PartitionKey, CharSequenceSet> referencedDataFiles = Maps.newHashMap();
+
+  private final FileFormat format;
+  private final FileAppenderFactory<RowData> appenderFactory;
+  private final OutputFileFactory fileFactory;
+  private final FileIO io;
+  private final long targetFileSize;
+  private Throwable failure;
+
   private final PartitionKey partitionKey;
   private final RowDataWrapper wrapper;
   private final String commitDelayString;
@@ -73,7 +88,12 @@ public class PartitionCommitWriter extends BaseTaskWriter<RowData> {
       String watermarkZoneID,
       String extractorPattern,
       String formatterPattern) {
-    super(spec, format, appenderFactory, fileFactory, io, targetFileSize);
+    this.format = format;
+    this.appenderFactory = appenderFactory;
+    this.fileFactory = fileFactory;
+    this.io = io;
+    this.targetFileSize = targetFileSize;
+
     this.partitionKey = new PartitionKey(spec, schema);
     this.wrapper = new RowDataWrapper(flinkSchema, schema.asStruct());
     this.commitDelayString = commitDelayString;
@@ -84,6 +104,23 @@ public class PartitionCommitWriter extends BaseTaskWriter<RowData> {
 
   RowDataWrapper wrapper() {
     return wrapper;
+  }
+
+  @Override
+  public void abort() throws IOException {
+    close();
+
+    // clean up files created by this writer
+    Tasks.foreach(Iterables.concat(completedDataFiles.values(), completedDeleteFiles.values()))
+        .executeWith(ThreadPools.getWorkerPool())
+        .throwFailureWhenFinished()
+        .noRetry()
+        .run(file -> file.forEach(f -> io.deleteFile(f.path().toString())));
+  }
+
+  @Override
+  public WriteResult complete() throws IOException {
+    return null;
   }
 
   @Override
@@ -103,7 +140,7 @@ public class PartitionCommitWriter extends BaseTaskWriter<RowData> {
     writer.write(row);
   }
 
-  public WriteResult complete(long currentWatermark) throws IOException {
+  public PartitionWriteResult complete(long currentWatermark) throws IOException {
     this.watermark = currentWatermark;
     close();
 
@@ -171,18 +208,123 @@ public class PartitionCommitWriter extends BaseTaskWriter<RowData> {
     }
   }
 
-  protected class PartitionedRollingFileWriter extends RollingFileWriter {
-    private final PartitionKey partitionKey;
+  private abstract class BaseRollingWriter<W extends Closeable> implements Closeable {
+    private static final int ROWS_DIVISOR = 1000;
+    private final StructLike partitionKey;
 
-    public PartitionedRollingFileWriter(StructLike partitionKey) {
-      super(partitionKey);
-      this.partitionKey = (PartitionKey) partitionKey;
+    private EncryptedOutputFile currentFile = null;
+    private W currentWriter = null;
+    private long currentRows = 0;
+
+    private BaseRollingWriter(StructLike partitionKey) {
+      this.partitionKey = partitionKey;
+      openCurrent();
+    }
+
+    public StructLike partitionKey() {
+      return partitionKey;
+    }
+
+    abstract W newWriter(EncryptedOutputFile file, StructLike partition);
+
+    abstract long length(W writer);
+
+    abstract void write(W writer, RowData record);
+
+    abstract void complete(W closedWriter);
+
+    public void write(RowData record) throws IOException {
+      write(currentWriter, record);
+      this.currentRows++;
+
+      if (shouldRollToNewFile()) {
+        closeCurrent();
+        openCurrent();
+      }
+    }
+
+    public CharSequence currentPath() {
+      Preconditions.checkNotNull(currentFile, "The currentFile shouldn't be null");
+      return currentFile.encryptingOutputFile().location();
+    }
+
+    public long currentRows() {
+      return currentRows;
+    }
+
+    private void openCurrent() {
+      if (partitionKey == null) {
+        // unpartitioned
+        this.currentFile = fileFactory.newOutputFile();
+      } else {
+        // partitioned
+        this.currentFile = fileFactory.newOutputFile(partitionKey);
+      }
+      this.currentWriter = newWriter(currentFile, partitionKey);
+      this.currentRows = 0;
+    }
+
+    private boolean shouldRollToNewFile() {
+      return currentRows % ROWS_DIVISOR == 0 && length(currentWriter) >= targetFileSize;
+    }
+
+    private void closeCurrent() throws IOException {
+      if (currentWriter != null) {
+        try {
+          currentWriter.close();
+
+          if (currentRows == 0L) {
+            try {
+              io.deleteFile(currentFile.encryptingOutputFile());
+            } catch (UncheckedIOException e) {
+              // the file may not have been created, and it isn't worth failing the job to clean up,
+              // skip deleting
+            }
+          } else {
+            complete(currentWriter);
+          }
+        } catch (IOException | RuntimeException e) {
+          setFailure(e);
+          throw e;
+        } finally {
+          this.currentFile = null;
+          this.currentWriter = null;
+          this.currentRows = 0;
+        }
+      }
     }
 
     @Override
-    protected void complete(DataWriter<RowData> closedWriter) {
+    public void close() throws IOException {
+      closeCurrent();
+    }
+  }
+
+  protected class PartitionedRollingFileWriter extends BaseRollingWriter<DataWriter<RowData>> {
+
+    public PartitionedRollingFileWriter(StructLike partitionKey) {
+      super(partitionKey);
+    }
+
+    @Override
+    DataWriter<RowData> newWriter(EncryptedOutputFile file, StructLike partitionKey) {
+      return appenderFactory.newDataWriter(file, format, partitionKey);
+    }
+
+    @Override
+    long length(DataWriter<RowData> writer) {
+      return writer.length();
+    }
+
+    @Override
+    void write(DataWriter<RowData> writer, RowData record) {
+      writer.write(record);
+    }
+
+    @Override
+    void complete(DataWriter<RowData> closedWriter) {
       completedDataFiles.compute(
-          partitionKey,
+          (PartitionKey) partitionKey(),
           (newPartitionKey, dataFiles) -> {
             if (dataFiles == null) {
               return Lists.newArrayList(closedWriter.toDataFile());
@@ -191,6 +333,12 @@ public class PartitionCommitWriter extends BaseTaskWriter<RowData> {
               return dataFiles;
             }
           });
+    }
+  }
+
+  protected void setFailure(Throwable throwable) {
+    if (failure == null) {
+      this.failure = throwable;
     }
   }
 }

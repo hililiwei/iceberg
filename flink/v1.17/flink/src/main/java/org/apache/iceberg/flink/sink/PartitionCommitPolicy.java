@@ -25,6 +25,7 @@ public interface PartitionCommitPolicy {
 
   String SUCCESS_FILE = "success-file";
   String CUSTOM = "custom";
+  String DEFAULT = "default";
 
   void commit(Table table, PartitionKey partitionKey);
 }

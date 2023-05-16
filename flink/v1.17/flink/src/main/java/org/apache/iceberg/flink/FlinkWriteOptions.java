@@ -69,7 +69,7 @@ public class FlinkWriteOptions {
       ConfigOptions.key("write-parallelism").intType().noDefaultValue();
 
   public static final ConfigOption<Boolean> SINK_PARTITION_COMMIT_ENABLED =
-      ConfigOptions.key("sink.partition-commit.enabled").booleanType().noDefaultValue();
+      ConfigOptions.key("sink.partition-commit.enabled").booleanType().defaultValue(false);
 
   public static final ConfigOption<Duration> SINK_PARTITION_COMMIT_DELAY =
       ConfigOptions.key("sink.partition-commit.delay")

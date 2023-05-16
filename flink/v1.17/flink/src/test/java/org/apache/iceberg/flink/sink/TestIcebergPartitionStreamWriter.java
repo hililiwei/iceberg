@@ -364,8 +364,8 @@ public class TestIcebergPartitionStreamWriter {
         new FlinkWriteConf(
             icebergTable, Maps.newHashMap(), new org.apache.flink.configuration.Configuration());
 
-    IcebergPartitionStreamWriter streamWriter =
-        FlinkSink.createPartitionStreamWriter(icebergTable, flinkWriteConfig, flinkRowType, null);
+    IcebergStreamWriter<RowData> streamWriter =
+        FlinkSink.createStreamWriter(icebergTable, flinkWriteConfig, flinkRowType, null);
     OneInputStreamOperatorTestHarness<RowData, WriteResult> harness =
         new OneInputStreamOperatorTestHarness<>(streamWriter, 1, 1, 0);
 

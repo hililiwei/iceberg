@@ -33,12 +33,12 @@ import org.apache.iceberg.io.WriteResult;
 import org.apache.iceberg.relocated.com.google.common.base.MoreObjects;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 
-class IcebergPartitionStreamWriter extends AbstractStreamOperator<WriteResult>
+class IcebergPartitionStreamWriter<T> extends AbstractStreamOperator<WriteResult>
     implements OneInputStreamOperator<RowData, WriteResult>, BoundedOneInput {
   private static final long serialVersionUID = 1L;
 
   private final String fullTableName;
-  private final TaskWriterFactory<RowData> taskWriterFactory;
+  private final TaskWriterFactory<T> taskWriterFactory;
 
   private transient PartitionCommitWriter writer;
   private transient int subTaskId;
@@ -46,7 +46,7 @@ class IcebergPartitionStreamWriter extends AbstractStreamOperator<WriteResult>
   private transient IcebergStreamWriterMetrics writerMetrics;
   private transient long currentWatermark;
 
-  IcebergPartitionStreamWriter(String fullTableName, TaskWriterFactory<RowData> taskWriterFactory) {
+  IcebergPartitionStreamWriter(String fullTableName, TaskWriterFactory<T> taskWriterFactory) {
     this.fullTableName = fullTableName;
     this.taskWriterFactory = taskWriterFactory;
     setChainingStrategy(ChainingStrategy.ALWAYS);

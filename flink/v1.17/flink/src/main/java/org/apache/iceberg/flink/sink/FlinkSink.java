@@ -41,7 +41,6 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSink;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.functions.sink.DiscardingSink;
-import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.util.DataFormatConverters;
@@ -73,11 +72,6 @@ import org.slf4j.LoggerFactory;
 
 public class FlinkSink {
   private static final Logger LOG = LoggerFactory.getLogger(FlinkSink.class);
-
-  private static final String ICEBERG_STREAM_WRITER_NAME =
-      IcebergStreamWriter.class.getSimpleName();
-  private static final String ICEBERG_FILES_COMMITTER_NAME =
-      IcebergFilesCommitter.class.getSimpleName();
 
   private FlinkSink() {}
 
@@ -423,11 +417,8 @@ public class FlinkSink {
 
     private SingleOutputStreamOperator<Void> appendCommitter(
         SingleOutputStreamOperator<WriteResult> writerStream) {
-      OneInputStreamOperator filesCommitter;
-
-      boolean partitionCommitEnabled = flinkWriteConf.partitionCommitEnabled();
-
-      if (partitionCommitEnabled) {
+      IcebergFilesCommitter filesCommitter;
+      if (flinkWriteConf.partitionCommitEnabled()) {
         filesCommitter =
             new IcebergPartitionCommitter(
                 tableLoader,
@@ -454,7 +445,10 @@ public class FlinkSink {
 
       SingleOutputStreamOperator<Void> committerStream =
           writerStream
-              .transform(operatorName(ICEBERG_FILES_COMMITTER_NAME), Types.VOID, filesCommitter)
+              .transform(
+                  operatorName(filesCommitter.getClass().getSimpleName()),
+                  Types.VOID,
+                  filesCommitter)
               .setParallelism(1)
               .setMaxParallelism(1);
       if (uidPrefix != null) {
@@ -484,16 +478,8 @@ public class FlinkSink {
         }
       }
 
-      boolean partitionCommitEnabled = flinkWriteConf.partitionCommitEnabled();
-
-      OneInputStreamOperator<RowData, WriteResult> streamWriter;
-
-      if (partitionCommitEnabled) {
-        streamWriter =
-            createPartitionStreamWriter(table, flinkWriteConf, flinkRowType, equalityFieldIds);
-      } else {
-        streamWriter = createStreamWriter(table, flinkWriteConf, flinkRowType, equalityFieldIds);
-      }
+      IcebergStreamWriter<RowData> streamWriter =
+          createStreamWriter(table, flinkWriteConf, flinkRowType, equalityFieldIds);
 
       int parallelism =
           flinkWriteConf.writeParallelism() == null
@@ -502,7 +488,7 @@ public class FlinkSink {
       SingleOutputStreamOperator<WriteResult> writerStream =
           input
               .transform(
-                  operatorName(ICEBERG_STREAM_WRITER_NAME),
+                  operatorName(streamWriter.getClass().getSimpleName()),
                   TypeInformation.of(WriteResult.class),
                   streamWriter)
               .setParallelism(parallelism);
@@ -603,33 +589,6 @@ public class FlinkSink {
     }
   }
 
-  static IcebergPartitionStreamWriter createPartitionStreamWriter(
-      Table table,
-      FlinkWriteConf flinkWriteConf,
-      RowType flinkRowType,
-      List<Integer> equalityFieldIds) {
-
-    Preconditions.checkArgument(table != null, "Iceberg table shouldn't be null");
-    Table serializableTable = SerializableTable.copyOf(table);
-    FileFormat format = flinkWriteConf.dataFileFormat();
-    TaskWriterFactory<RowData> taskWriterFactory =
-        new RowDataTaskWriterFactory(
-            serializableTable,
-            flinkRowType,
-            flinkWriteConf.targetDataFileSize(),
-            format,
-            writeProperties(table, format, flinkWriteConf),
-            equalityFieldIds,
-            flinkWriteConf.upsertMode(),
-            flinkWriteConf.partitionCommitEnabled(),
-            flinkWriteConf.partitionCommitDelay(),
-            flinkWriteConf.partitionCommitWatermarkTimeZone(),
-            flinkWriteConf.partitionTimeExtractorTimestampPattern(),
-            flinkWriteConf.partitionTimeExtractorTimestampFormatter());
-
-    return new IcebergPartitionStreamWriter(table.name(), taskWriterFactory);
-  }
-
   static IcebergStreamWriter<RowData> createStreamWriter(
       Table table,
       FlinkWriteConf flinkWriteConf,
@@ -639,15 +598,36 @@ public class FlinkSink {
 
     Table serializableTable = SerializableTable.copyOf(table);
     FileFormat format = flinkWriteConf.dataFileFormat();
-    TaskWriterFactory<RowData> taskWriterFactory =
-        new RowDataTaskWriterFactory(
-            serializableTable,
-            flinkRowType,
-            flinkWriteConf.targetDataFileSize(),
-            format,
-            writeProperties(table, format, flinkWriteConf),
-            equalityFieldIds,
-            flinkWriteConf.upsertMode());
+
+    TaskWriterFactory<RowData> taskWriterFactory;
+    if (flinkWriteConf.partitionCommitEnabled()) {
+      taskWriterFactory =
+          new RowDataTaskWriterFactory(
+              serializableTable,
+              flinkRowType,
+              flinkWriteConf.targetDataFileSize(),
+              format,
+              writeProperties(table, format, flinkWriteConf),
+              equalityFieldIds,
+              flinkWriteConf.upsertMode(),
+              flinkWriteConf.partitionCommitEnabled(),
+              flinkWriteConf.partitionCommitDelay(),
+              flinkWriteConf.partitionCommitWatermarkTimeZone(),
+              flinkWriteConf.partitionTimeExtractorTimestampPattern(),
+              flinkWriteConf.partitionTimeExtractorTimestampFormatter());
+
+    } else {
+      taskWriterFactory =
+          new RowDataTaskWriterFactory(
+              serializableTable,
+              flinkRowType,
+              flinkWriteConf.targetDataFileSize(),
+              format,
+              writeProperties(table, format, flinkWriteConf),
+              equalityFieldIds,
+              flinkWriteConf.upsertMode());
+    }
+
     return new IcebergStreamWriter<>(table.name(), taskWriterFactory);
   }
 

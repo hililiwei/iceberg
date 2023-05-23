@@ -18,12 +18,21 @@
  */
 package org.apache.iceberg.flink;
 
+import static org.apache.iceberg.DistributionMode.HASH;
+import static org.apache.iceberg.DistributionMode.NONE;
+import static org.apache.iceberg.DistributionMode.RANGE;
+
+import java.util.List;
 import java.util.Map;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.iceberg.DistributionMode;
 import org.apache.iceberg.FileFormat;
+import org.apache.iceberg.PartitionField;
+import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableProperties;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A class for common Iceberg configs for Flink writes.
@@ -44,12 +53,15 @@ import org.apache.iceberg.TableProperties;
  * <p>Note this class is NOT meant to be serialized.
  */
 public class FlinkWriteConf {
+  private static final Logger LOG = LoggerFactory.getLogger(FlinkWriteConf.class);
 
   private final FlinkConfParser confParser;
+  private final Table table;
 
   public FlinkWriteConf(
       Table table, Map<String, String> writeOptions, ReadableConfig readableConfig) {
     this.confParser = new FlinkConfParser(table, writeOptions, readableConfig);
+    this.table = table;
   }
 
   public boolean overwriteMode() {
@@ -153,16 +165,37 @@ public class FlinkWriteConf {
         .parse();
   }
 
-  public DistributionMode distributionMode() {
+  public DistributionMode distributionMode(List<Integer> equalityFieldIds) {
     String modeName =
         confParser
             .stringConf()
             .option(FlinkWriteOptions.DISTRIBUTION_MODE.key())
             .flinkConfig(FlinkWriteOptions.DISTRIBUTION_MODE)
             .tableProperty(TableProperties.WRITE_DISTRIBUTION_MODE)
-            .defaultValue(TableProperties.WRITE_DISTRIBUTION_MODE_NONE)
-            .parse();
-    return DistributionMode.fromName(modeName);
+            .parseOptional();
+
+    return modeName == null
+        ? defaultWriteDistributionMode(equalityFieldIds)
+        : DistributionMode.fromName(modeName);
+  }
+
+  private DistributionMode defaultWriteDistributionMode(List<Integer> equalityFieldIds) {
+    if (table.sortOrder().isSorted()) {
+      return RANGE;
+    } else if (table.spec().isPartitioned()) {
+      if (!equalityFieldIds.isEmpty()) {
+        PartitionSpec partitionSpec = table.spec();
+        for (PartitionField partitionField : partitionSpec.fields()) {
+          if (!equalityFieldIds.contains(partitionField.sourceId())) {
+            return NONE;
+          }
+        }
+      }
+
+      return HASH;
+    } else {
+      return NONE;
+    }
   }
 
   public int workerPoolSize() {

@@ -55,6 +55,7 @@ import org.apache.iceberg.flink.source.assigner.SplitAssignerFactory;
 import org.apache.iceberg.flink.source.enumerator.ContinuousIcebergEnumerator;
 import org.apache.iceberg.flink.source.enumerator.ContinuousSplitPlanner;
 import org.apache.iceberg.flink.source.enumerator.ContinuousSplitPlannerImpl;
+import org.apache.iceberg.flink.source.enumerator.DynamicStaticIcebergEnumerator;
 import org.apache.iceberg.flink.source.enumerator.IcebergEnumeratorState;
 import org.apache.iceberg.flink.source.enumerator.IcebergEnumeratorStateSerializer;
 import org.apache.iceberg.flink.source.enumerator.StaticIcebergEnumerator;
@@ -81,6 +82,8 @@ public class IcebergSource<T> implements Source<T, IcebergSourceSplit, IcebergEn
   private final SplitAssignerFactory assignerFactory;
   private final SerializableComparator<IcebergSourceSplit> splitComparator;
 
+  @Nullable private final List<String> dynamicFilterFields;
+
   // Can't use SerializableTable as enumerator needs a regular table
   // that can discover table changes
   private transient Table table;
@@ -91,13 +94,15 @@ public class IcebergSource<T> implements Source<T, IcebergSourceSplit, IcebergEn
       ReaderFunction<T> readerFunction,
       SplitAssignerFactory assignerFactory,
       SerializableComparator<IcebergSourceSplit> splitComparator,
-      Table table) {
+      Table table,
+      @Nullable List<String> dynamicFilterFields) {
     this.tableLoader = tableLoader;
     this.scanContext = scanContext;
     this.readerFunction = readerFunction;
     this.assignerFactory = assignerFactory;
     this.splitComparator = splitComparator;
     this.table = table;
+    this.dynamicFilterFields = dynamicFilterFields;
   }
 
   String name() {
@@ -196,6 +201,9 @@ public class IcebergSource<T> implements Source<T, IcebergSourceSplit, IcebergEn
           new ContinuousSplitPlannerImpl(tableLoader.clone(), scanContext, planningThreadName());
       return new ContinuousIcebergEnumerator(
           enumContext, assigner, scanContext, splitPlanner, enumState);
+    } else if (dynamicFilterFields != null) {
+      return new DynamicStaticIcebergEnumerator(
+          enumContext, assigner, scanContext, dynamicFilterFields, tableLoader.clone());
     } else {
       List<IcebergSourceSplit> splits = planSplitsForBatch(planningThreadName());
       assigner.onDiscoveredSplits(splits);
@@ -221,6 +229,7 @@ public class IcebergSource<T> implements Source<T, IcebergSourceSplit, IcebergEn
     private final ScanContext.Builder contextBuilder = ScanContext.builder();
     private TableSchema projectedFlinkSchema;
     private Boolean exposeLocality;
+    private List<String> dynamicFilterFields;
 
     private final Map<String, String> readOptions = Maps.newHashMap();
 
@@ -233,6 +242,11 @@ public class IcebergSource<T> implements Source<T, IcebergSourceSplit, IcebergEn
 
     public Builder<T> table(Table newTable) {
       this.table = newTable;
+      return this;
+    }
+
+    public Builder<T> dynamicFilterFields(List<String> newDynamicFilterFields) {
+      this.dynamicFilterFields = newDynamicFilterFields;
       return this;
     }
 
@@ -486,7 +500,13 @@ public class IcebergSource<T> implements Source<T, IcebergSourceSplit, IcebergEn
       checkRequired();
       // Since builder already load the table, pass it to the source to avoid double loading
       return new IcebergSource<T>(
-          tableLoader, context, readerFunction, splitAssignerFactory, splitComparator, table);
+          tableLoader,
+          context,
+          readerFunction,
+          splitAssignerFactory,
+          splitComparator,
+          table,
+          dynamicFilterFields);
     }
 
     private void checkRequired() {

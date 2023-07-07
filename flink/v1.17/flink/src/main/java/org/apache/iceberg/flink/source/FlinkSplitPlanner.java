@@ -22,15 +22,19 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
+import java.util.stream.Collectors;
 import org.apache.flink.annotation.Internal;
 import org.apache.iceberg.CombinedScanTask;
 import org.apache.iceberg.FileScanTask;
 import org.apache.iceberg.IncrementalAppendScan;
+import org.apache.iceberg.PartitionScanTask;
 import org.apache.iceberg.Scan;
+import org.apache.iceberg.ScanTaskGroup;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.TableScan;
 import org.apache.iceberg.expressions.Expression;
+import org.apache.iceberg.flink.source.enumerator.BatchPartitioningPlan;
 import org.apache.iceberg.flink.source.split.IcebergSourceSplit;
 import org.apache.iceberg.hadoop.Util;
 import org.apache.iceberg.io.CloseableIterable;
@@ -79,6 +83,31 @@ public class FlinkSplitPlanner {
     } catch (IOException e) {
       throw new UncheckedIOException("Failed to process task iterable: ", e);
     }
+  }
+
+  /** This returns Partitioning splits for the FLIP-27 source */
+  public static List<IcebergSourceSplit> planPartitioningIcebergSourceSplits(
+      Table table, ScanContext context, ExecutorService workerPool) {
+    TableScan scan1 = table.newScan();
+    scan1 = refineScanWithBaseConfigs(scan1, context, workerPool);
+
+    if (context.snapshotId() != null) {
+      scan1 = scan1.useSnapshot(context.snapshotId());
+    } else if (context.tag() != null) {
+      scan1 = scan1.useRef(context.tag());
+    } else if (context.branch() != null) {
+      scan1 = scan1.useRef(context.branch());
+    }
+
+    if (context.asOfTimestamp() != null) {
+      scan1 = scan1.asOfTime(context.asOfTimestamp());
+    }
+
+    BatchPartitioningPlan scan = new BatchPartitioningPlan(table, context.project(), true, scan1);
+    List<ScanTaskGroup<PartitionScanTask>> scanTaskGroups = scan.taskGroups();
+    return scanTaskGroups.stream()
+        .map(IcebergSourceSplit::fromScanTaskGroup)
+        .collect(Collectors.toList());
   }
 
   static CloseableIterable<CombinedScanTask> planTasks(

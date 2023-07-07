@@ -32,6 +32,7 @@ import org.apache.iceberg.expressions.Expression;
 import org.apache.iceberg.flink.FlinkConfigOptions;
 import org.apache.iceberg.flink.FlinkReadConf;
 import org.apache.iceberg.flink.FlinkReadOptions;
+import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 
 /** Context object with optional arguments for a Flink Scan. */
 @Internal
@@ -311,6 +312,39 @@ public class ScanContext implements Serializable {
         .nameMapping(nameMapping)
         .project(schema)
         .filters(filters)
+        .limit(limit)
+        .includeColumnStats(includeColumnStats)
+        .exposeLocality(exposeLocality)
+        .planParallelism(planParallelism)
+        .maxPlanningSnapshotCount(maxPlanningSnapshotCount)
+        .maxAllowedPlanningFailures(maxAllowedPlanningFailures)
+        .build();
+  }
+
+  public ScanContext copyAndAddFilters(List<Expression> newFilters) {
+    List<Expression> allFilters = Lists.newArrayList(newFilters);
+    if (filters != null) {
+      allFilters.addAll(filters);
+    }
+
+    return ScanContext.builder()
+        .caseSensitive(caseSensitive)
+        .useSnapshotId(snapshotId)
+        .useBranch(branch)
+        .useTag(tag)
+        .startSnapshotId(startSnapshotId)
+        .endSnapshotId(endSnapshotId)
+        .startTag(startTag)
+        .endTag(endTag)
+        .asOfTimestamp(asOfTimestamp)
+        .splitSize(splitSize)
+        .splitLookback(splitLookback)
+        .splitOpenFileCost(splitOpenFileCost)
+        .streaming(isStreaming)
+        .monitorInterval(monitorInterval)
+        .nameMapping(nameMapping)
+        .project(schema)
+        .filters(allFilters)
         .limit(limit)
         .includeColumnStats(includeColumnStats)
         .exposeLocality(exposeLocality)

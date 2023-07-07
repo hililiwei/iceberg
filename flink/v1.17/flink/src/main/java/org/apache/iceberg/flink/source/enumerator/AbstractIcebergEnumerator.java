@@ -27,6 +27,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.annotation.Nullable;
 import org.apache.flink.api.connector.source.SourceEvent;
+import org.apache.flink.api.connector.source.SourceSplit;
 import org.apache.flink.api.connector.source.SplitEnumerator;
 import org.apache.flink.api.connector.source.SplitEnumeratorContext;
 import org.apache.iceberg.flink.source.assigner.GetSplitResult;
@@ -121,9 +122,14 @@ abstract class AbstractIcebergEnumerator
       int awaitingSubtask = nextAwaiting.getKey();
       String hostname = nextAwaiting.getValue();
       GetSplitResult getResult = assigner.getNext(hostname);
+      while (getResult.split() != null && !shouldAssignSplit(getResult.split())) {
+        getResult = assigner.getNext(hostname);
+      }
+
       if (getResult.status() == GetSplitResult.Status.AVAILABLE) {
         LOG.info("Assign split to subtask {}: {}", awaitingSubtask, getResult.split());
         enumeratorContext.assignSplit(getResult.split(), awaitingSubtask);
+        afterAssign(getResult.split());
         awaitingReader.remove();
       } else if (getResult.status() == GetSplitResult.Status.CONSTRAINED) {
         getAvailableFutureIfNeeded();
@@ -145,6 +151,12 @@ abstract class AbstractIcebergEnumerator
 
   /** return true if enumerator should wait for splits like in the continuous enumerator case */
   protected abstract boolean shouldWaitForMoreSplits();
+
+  protected boolean shouldAssignSplit(SourceSplit split) {
+    return true;
+  }
+
+  protected void afterAssign(SourceSplit split) {}
 
   private synchronized void getAvailableFutureIfNeeded() {
     if (availableFuture.get() != null) {

@@ -28,6 +28,8 @@ import org.apache.flink.api.connector.source.SourceSplit;
 import org.apache.flink.util.InstantiationUtil;
 import org.apache.iceberg.CombinedScanTask;
 import org.apache.iceberg.FileScanTask;
+import org.apache.iceberg.PartitionScanTask;
+import org.apache.iceberg.ScanTaskGroup;
 import org.apache.iceberg.relocated.com.google.common.base.MoreObjects;
 import org.apache.iceberg.relocated.com.google.common.collect.Iterables;
 
@@ -35,7 +37,7 @@ import org.apache.iceberg.relocated.com.google.common.collect.Iterables;
 public class IcebergSourceSplit implements SourceSplit, Serializable {
   private static final long serialVersionUID = 1L;
 
-  private final CombinedScanTask task;
+  private final ScanTaskGroup task;
 
   private int fileOffset;
   private long recordOffset;
@@ -50,8 +52,19 @@ public class IcebergSourceSplit implements SourceSplit, Serializable {
     this.recordOffset = recordOffset;
   }
 
+  private IcebergSourceSplit(
+      ScanTaskGroup<PartitionScanTask> task, int fileOffset, long recordOffset) {
+    this.task = task;
+    this.fileOffset = fileOffset;
+    this.recordOffset = recordOffset;
+  }
+
   public static IcebergSourceSplit fromCombinedScanTask(CombinedScanTask combinedScanTask) {
     return fromCombinedScanTask(combinedScanTask, 0, 0L);
+  }
+
+  public static IcebergSourceSplit fromScanTaskGroup(ScanTaskGroup<PartitionScanTask> task) {
+    return new IcebergSourceSplit(task, 0, 0L);
   }
 
   public static IcebergSourceSplit fromCombinedScanTask(
@@ -59,7 +72,17 @@ public class IcebergSourceSplit implements SourceSplit, Serializable {
     return new IcebergSourceSplit(combinedScanTask, fileOffset, recordOffset);
   }
 
+  /** use {@link #asCombinedScanTask} instead */
+  @Deprecated
   public CombinedScanTask task() {
+    return task.asCombinedScanTask();
+  }
+
+  public CombinedScanTask asCombinedScanTask() {
+    return task.asCombinedScanTask();
+  }
+
+  public ScanTaskGroup asScanTaskGroup() {
     return task;
   }
 
@@ -73,7 +96,7 @@ public class IcebergSourceSplit implements SourceSplit, Serializable {
 
   @Override
   public String splitId() {
-    return MoreObjects.toStringHelper(this).add("files", toString(task.files())).toString();
+    return MoreObjects.toStringHelper(this).add("files", toString(task.tasks())).toString();
   }
 
   public void updatePosition(int newFileOffset, long newRecordOffset) {
@@ -86,7 +109,7 @@ public class IcebergSourceSplit implements SourceSplit, Serializable {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-        .add("files", toString(task.files()))
+        .add("files", toString(task.tasks()))
         .add("fileOffset", fileOffset)
         .add("recordOffset", recordOffset)
         .toString();

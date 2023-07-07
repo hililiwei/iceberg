@@ -18,10 +18,13 @@
  */
 package org.apache.iceberg.flink.source;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
@@ -35,12 +38,15 @@ import org.apache.flink.table.connector.ProviderContext;
 import org.apache.flink.table.connector.source.DataStreamScanProvider;
 import org.apache.flink.table.connector.source.DynamicTableSource;
 import org.apache.flink.table.connector.source.ScanTableSource;
+import org.apache.flink.table.connector.source.abilities.SupportsDynamicFiltering;
 import org.apache.flink.table.connector.source.abilities.SupportsFilterPushDown;
 import org.apache.flink.table.connector.source.abilities.SupportsLimitPushDown;
 import org.apache.flink.table.connector.source.abilities.SupportsProjectionPushDown;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.expressions.ResolvedExpression;
 import org.apache.flink.table.types.DataType;
+import org.apache.iceberg.PartitionField;
+import org.apache.iceberg.Table;
 import org.apache.iceberg.expressions.Expression;
 import org.apache.iceberg.flink.FlinkConfigOptions;
 import org.apache.iceberg.flink.FlinkFilters;
@@ -49,6 +55,8 @@ import org.apache.iceberg.flink.source.assigner.SplitAssignerType;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableList;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Flink Iceberg table source. */
 @Internal
@@ -56,7 +64,10 @@ public class IcebergTableSource
     implements ScanTableSource,
         SupportsProjectionPushDown,
         SupportsFilterPushDown,
-        SupportsLimitPushDown {
+        SupportsLimitPushDown,
+        SupportsDynamicFiltering {
+
+  private static final Logger LOG = LoggerFactory.getLogger(IcebergTableSource.class);
 
   private int[] projectedFields;
   private Long limit;
@@ -67,6 +78,7 @@ public class IcebergTableSource
   private final Map<String, String> properties;
   private final boolean isLimitPushDown;
   private final ReadableConfig readableConfig;
+  private List<String> dynamicFilterFields = Lists.newArrayList();
 
   private IcebergTableSource(IcebergTableSource toCopy) {
     this.loader = toCopy.loader;
@@ -77,6 +89,7 @@ public class IcebergTableSource
     this.limit = toCopy.limit;
     this.filters = toCopy.filters;
     this.readableConfig = toCopy.readableConfig;
+    this.dynamicFilterFields = toCopy.dynamicFilterFields;
   }
 
   public IcebergTableSource(
@@ -140,6 +153,7 @@ public class IcebergTableSource
             .limit(limit)
             .filters(filters)
             .flinkConfig(readableConfig)
+            .dynamicFilterFields(dynamicFilterFields)
             .build();
     DataStreamSource stream =
         env.fromSource(
@@ -225,5 +239,41 @@ public class IcebergTableSource
   @Override
   public String asSummaryString() {
     return "Iceberg table source";
+  }
+
+  @Override
+  public List<String> listAcceptedFilterFields() {
+    loader.open();
+    try (TableLoader loaderCache = loader) {
+      Table table = loaderCache.loadTable();
+      if (table.spec().isPartitioned()) {
+        return table.spec().fields().stream()
+            .map(PartitionField::name)
+            .collect(Collectors.toList());
+      }
+
+    } catch (IOException e) {
+      throw new UncheckedIOException("Failed to close table loader", e);
+    }
+
+    return Lists.newArrayList();
+  }
+
+  @Override
+  public void applyDynamicFiltering(List<String> candidateFilterFields) {
+    loader.open();
+    try (TableLoader loaderCache = loader) {
+      Table table = loaderCache.loadTable();
+      if (table.spec().isPartitioned()) {
+        dynamicFilterFields = candidateFilterFields;
+      } else {
+        throw new RuntimeException(
+            String.format(
+                "Table : %s is not a partition table, but try to apply dynamic filtering.",
+                table.name()));
+      }
+    } catch (IOException e) {
+      throw new UncheckedIOException("Failed to close table loader", e);
+    }
   }
 }

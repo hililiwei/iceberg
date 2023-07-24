@@ -661,7 +661,11 @@ def test_construct_hive_storage_descriptor_nested(table_schema_nested: Schema) -
             FieldSchema(name="baz", type="boolean", comment=None),
             FieldSchema(name="qux", type="array<string>", comment=None),
             FieldSchema(name="quux", type="map<string,map<string,int>>", comment=None),
-            FieldSchema(name="location", type="array<struct<latitude:float,longitude:float>>", comment=None),
+            FieldSchema(
+                name="location",
+                type="map<struct<address:string,city:string,zip:int>,struct<latitude:float,longitude:float>>",
+                comment=None,
+            ),
             FieldSchema(name="person", type="struct<name:string,age:int>", comment=None),
         ],
         location="s3://",

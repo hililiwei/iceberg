@@ -153,13 +153,19 @@ def table_schema_nested() -> Schema:
         NestedField(
             field_id=11,
             name="location",
-            field_type=ListType(
-                element_id=12,
-                element_type=StructType(
+            field_type=MapType(
+                key_id=18,
+                value_id=19,
+                key_type=StructType(
+                    NestedField(field_id=21, name="address", field_type=StringType(), required=False),
+                    NestedField(field_id=22, name="city", field_type=StringType(), required=False),
+                    NestedField(field_id=23, name="zip", field_type=IntegerType(), required=False),
+                ),
+                value_type=StructType(
                     NestedField(field_id=13, name="latitude", field_type=FloatType(), required=False),
                     NestedField(field_id=14, name="longitude", field_type=FloatType(), required=False),
                 ),
-                element_required=True,
+                value_required=True,
             ),
             required=True,
         ),

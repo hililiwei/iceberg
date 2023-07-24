@@ -59,7 +59,7 @@ from pyiceberg.manifest import (
     ManifestFile,
 )
 from pyiceberg.partitioning import PartitionSpec
-from pyiceberg.schema import Schema
+from pyiceberg.schema import Schema, SchemaUpdate
 from pyiceberg.table.metadata import INITIAL_SEQUENCE_NUMBER, TableMetadata
 from pyiceberg.table.snapshots import Snapshot, SnapshotLogEntry
 from pyiceberg.table.sorting import SortOrder
@@ -70,6 +70,7 @@ from pyiceberg.typedef import (
     KeyDefaultDict,
     Properties,
 )
+from pyiceberg.types import IcebergType
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -97,6 +98,7 @@ class Transaction:
         self._table = table
         self._updates = actions or ()
         self._requirements = requirements or ()
+        self._schema_update: Optional[SchemaUpdate] = None
 
     def __enter__(self) -> Transaction:
         """Starts a transaction to update the table."""
@@ -152,6 +154,27 @@ class Transaction:
         """
         return self._append_updates(SetPropertiesUpdate(updates=updates))
 
+    def add_column(
+        self, name: str, type_var: IcebergType, doc: Optional[str] = None, parent: Optional[str] = None
+    ) -> Transaction:
+        """Add a new column to a nested struct or Add a new top-level column.
+
+        Args:
+            name: Name for the new column.
+            type_var: Type for the new column.
+            doc: Documentation string for the new column.
+            parent: Name of the parent struct to the column will be added to.
+
+        Returns:
+            The alter table builder.
+        """
+        if not self._schema_update:
+            self._schema_update = SchemaUpdate(self._table.schema())
+
+        self._schema_update.add_column(name, type_var, doc, parent)
+
+        return self
+
     def remove_properties(self, *removals: str) -> Transaction:
         """Removes properties.
 
@@ -180,6 +203,10 @@ class Transaction:
         Returns:
             The table with the updates applied.
         """
+        if self._schema_update:
+            self._append_updates(AddSchemaUpdate(schema=self._schema_update.apply()))
+            self._schema_update = None
+
         # Strip the catalog name
         if len(self._updates) > 0:
             response = self._table.catalog._commit_table(  # pylint: disable=W0212

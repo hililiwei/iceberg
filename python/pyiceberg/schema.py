@@ -15,6 +15,8 @@
 # specific language governing permissions and limitations
 # under the License.
 # pylint: disable=W0511
+from __future__ import annotations
+
 import itertools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -64,6 +66,7 @@ T = TypeVar("T")
 P = TypeVar("P")
 
 INITIAL_SCHEMA_ID = 0
+TABLE_ROOT_ID = -1
 
 
 class Schema(IcebergBaseModel):
@@ -145,7 +148,7 @@ class Schema(IcebergBaseModel):
         return index_name_by_id(self)
 
     @cached_property
-    def _lazy_id_to_accessor(self) -> Dict[int, "Accessor"]:
+    def _lazy_id_to_accessor(self) -> Dict[int, Accessor]:
         """Returns an index of field ID to accessor.
 
         This is calculated once when called for the first time. Subsequent calls to this method will use a cached index.
@@ -201,7 +204,7 @@ class Schema(IcebergBaseModel):
 
     @property
     def highest_field_id(self) -> int:
-        return visit(self.as_struct(), _FindLastFieldId())
+        return max(self._lazy_id_to_name.keys(), default=0)
 
     def find_column_name(self, column_id: int) -> Optional[str]:
         """Find a column name given a column ID.
@@ -226,7 +229,7 @@ class Schema(IcebergBaseModel):
         """
         return list(self._lazy_id_to_name.values())
 
-    def accessor_for_field(self, field_id: int) -> "Accessor":
+    def accessor_for_field(self, field_id: int) -> Accessor:
         """Find a schema position accessor given a field ID.
 
         Args:
@@ -243,7 +246,7 @@ class Schema(IcebergBaseModel):
 
         return self._lazy_id_to_accessor[field_id]
 
-    def select(self, *names: str, case_sensitive: bool = True) -> "Schema":
+    def select(self, *names: str, case_sensitive: bool = True) -> Schema:
         """Return a new schema instance pruned to a subset of columns.
 
         Args:
@@ -682,7 +685,7 @@ class Accessor:
     """An accessor for a specific position in a container that implements the StructProtocol."""
 
     position: int
-    inner: Optional["Accessor"] = None
+    inner: Optional[Accessor] = None
 
     def __str__(self) -> str:
         """Returns the string representation of the Accessor class."""
@@ -766,7 +769,7 @@ def _(obj: MapType, visitor: SchemaVisitor[T]) -> T:
 
     visitor.before_map_value(obj.value_field)
     value_result = visit(obj.value_type, visitor)
-    visitor.after_list_element(obj.value_field)
+    visitor.after_map_value(obj.value_field)
 
     return visitor.map(obj, key_result, value_result)
 
@@ -889,6 +892,22 @@ class _IndexByName(SchemaVisitor[Dict[str, int]]):
         self._combined_index: Dict[str, int] = {}
         self._field_names: List[str] = []
         self._short_field_names: List[str] = []
+
+    def before_map_key(self, key: NestedField) -> None:
+        self.before_field(key)
+
+    def after_map_key(self, key: NestedField) -> None:
+        self.after_field(key)
+
+    def before_map_value(self, value: NestedField) -> None:
+        if not isinstance(value.field_type, StructType):
+            self._short_field_names.append(value.name)
+        self._field_names.append(value.name)
+
+    def after_map_value(self, value: NestedField) -> None:
+        if not isinstance(value.field_type, StructType):
+            self._short_field_names.pop()
+        self._field_names.pop()
 
     def before_list_element(self, element: NestedField) -> None:
         """Short field names omit element when the element is a StructType."""
@@ -1082,31 +1101,22 @@ def build_position_accessors(schema_or_type: Union[Schema, IcebergType]) -> Dict
     return visit(schema_or_type, _BuildPositionAccessors())
 
 
-class _FindLastFieldId(SchemaVisitor[int]):
-    """Traverses the schema to get the highest field-id."""
-
-    def schema(self, schema: Schema, struct_result: int) -> int:
-        return struct_result
-
-    def struct(self, struct: StructType, field_results: List[int]) -> int:
-        return max(field_results)
-
-    def field(self, field: NestedField, field_result: int) -> int:
-        return max(field.field_id, field_result)
-
-    def list(self, list_type: ListType, element_result: int) -> int:
-        return element_result
-
-    def map(self, map_type: MapType, key_result: int, value_result: int) -> int:
-        return max(key_result, value_result)
-
-    def primitive(self, primitive: PrimitiveType) -> int:
-        return 0
-
-
-def assign_fresh_schema_ids(schema: Schema) -> Schema:
+@singledispatch
+def assign_fresh_schema_ids(schema_or_type: Union[Schema, IcebergType], next_id: Optional[Callable[[], int]] = None) -> Schema:
     """Traverses the schema, and sets new IDs."""
-    return pre_order_visit(schema, _SetFreshIDs())
+    raise ValueError(f"Unsupported type: {schema_or_type}")
+
+
+@assign_fresh_schema_ids.register(Schema)
+def _(schema: Schema, next_id: Optional[Callable[[], int]] = None) -> Schema:
+    """Traverses the schema, and sets new IDs."""
+    return pre_order_visit(schema, _SetFreshIDs(next_id_func=next_id))
+
+
+@assign_fresh_schema_ids.register(IcebergType)
+def _(type_var: IcebergType, next_id: Optional[Callable[[], int]] = None) -> Schema:
+    """Traverses the schema, and sets new IDs."""
+    return pre_order_visit(type_var, _SetFreshIDs(next_id_func=next_id))
 
 
 class _SetFreshIDs(PreOrderSchemaVisitor[IcebergType]):
@@ -1114,12 +1124,17 @@ class _SetFreshIDs(PreOrderSchemaVisitor[IcebergType]):
 
     counter: itertools.count  # type: ignore
     reserved_ids: Dict[int, int]
+    next_id_func: Optional[Callable[[], int]] = None
 
-    def __init__(self, start: int = 1) -> None:
+    def __init__(self, start: int = 1, next_id_func: Optional[Callable[[], int]] = None) -> None:
         self.counter = itertools.count(start)
         self.reserved_ids = {}
+        self.next_id_func = next_id_func
 
     def _get_and_increment(self) -> int:
+        if self.next_id_func:
+            return self.next_id_func()
+
         return next(self.counter)
 
     def schema(self, schema: Schema, struct_result: Callable[[], StructType]) -> Schema:
@@ -1376,3 +1391,258 @@ def _(file_type: FixedType, read_type: IcebergType) -> IcebergType:
         return read_type
     else:
         raise ResolveError(f"Cannot promote {file_type} to {read_type}")
+
+
+class UpdateSchema(ABC):
+    @abstractmethod
+    def case_sensitive(self, case_sensitive: bool) -> UpdateSchema:
+        """Determines if the case of schema needs to be considered when comparing column names.
+
+        Args:
+            case_sensitive: When false case is not considered in column name comparisons.
+
+        Returns:
+            This for method chaining
+        """
+
+    @abstractmethod
+    def add_column(
+        self, name: str, type_var: IcebergType, doc: Optional[str] = None, parent: Optional[str] = None
+    ) -> UpdateSchema:
+        """Add a new column to a nested struct or Add a new top-level column.
+
+        Args:
+            name: Name for the new column.
+            type_var: Type for the new column.
+            doc: Documentation string for the new column.
+            parent: Name of the parent struct to the column will be added to.
+
+        Returns:
+            This for method chaining
+        """
+
+    @abstractmethod
+    def allow_incompatible_changes(self) -> UpdateSchema:
+        """Allow incompatible changes to the schema.
+
+        Returns:
+            This for method chaining
+        """
+
+    @abstractmethod
+    def add_required_column(
+        self, name: str, type_var: IcebergType, doc: Optional[str] = None, parent: Optional[str] = None
+    ) -> UpdateSchema:
+        """Add a new required column to a nested struct or Add a new required top-level column.
+
+        Args:
+            name: Name for the new column.
+            type_var: Type for the new column.
+            doc: Documentation string for the new column.
+            parent: Name of the parent struct to the column will be added to.
+
+        Returns:
+            This for method chaining
+        """
+
+    @abstractmethod
+    def apply(self) -> Schema:
+        """Apply the pending changes to the original schema and returns the result.
+
+        Returns:
+            the result Schema when all pending updates are applied
+        """
+
+
+class SchemaUpdate(UpdateSchema):
+    def __init__(self, schema: Schema, last_column_id: Optional[int] = None):
+        self._schema = schema
+        if last_column_id:
+            self._last_column_id = last_column_id
+        else:
+            self._last_column_id = schema.highest_field_id
+
+        self._identifier_field_names = schema.column_names
+        self._adds: Dict[int, List[NestedField]] = {}
+        self._added_name_to_id: Dict[str, int] = {}
+        self._id_to_parent: Dict[int, str] = {}
+        self._allow_incompatible_changes: bool = False
+        self._case_sensitive: bool = True
+
+    def case_sensitive(self, case_sensitive: bool) -> UpdateSchema:
+        self._case_sensitive = case_sensitive
+        return self
+
+    def add_column(
+        self, name: str, type_var: IcebergType, doc: Optional[str] = None, parent: Optional[str] = None
+    ) -> UpdateSchema:
+        if "." in name:
+            raise ValueError(f"Cannot add column with ambiguous name: {name}")
+
+        self._internal_add_column(parent, name, True, type_var, doc)
+        return self
+
+    def add_required_column(
+        self, name: str, type_var: IcebergType, doc: Optional[str] = None, parent: Optional[str] = None
+    ) -> UpdateSchema:
+        if "." in name:
+            raise ValueError(f"Cannot add column with ambiguous name: {name}")
+
+        if not self._allow_incompatible_changes:
+            raise ValueError(f"Incompatible change: cannot add required column: {name}")
+
+        self._internal_add_column(parent, name, False, type_var, doc)
+        return self
+
+    def allow_incompatible_changes(self) -> UpdateSchema:
+        self._allow_incompatible_changes = True
+        return self
+
+    def apply(self) -> Schema:
+        return apply_changes(self._schema, self._adds, self._identifier_field_names)
+
+    def _internal_add_column(
+        self, parent: Optional[str], name: str, is_optional: bool, type_var: IcebergType, doc: Optional[str]
+    ) -> None:
+        full_name: str = name
+        parent_id: int = TABLE_ROOT_ID
+
+        exist_field: Optional[NestedField] = None
+        if parent:
+            parent_field = self._schema.find_field(parent, self._case_sensitive)
+            parent_type = parent_field.field_type
+            if isinstance(parent_type, MapType):
+                parent_field = parent_type.value_field
+            elif isinstance(parent_type, ListType):
+                parent_field = parent_type.element_field
+
+            if not parent_field.field_type.is_struct:
+                raise ValueError(f"Cannot add column to non-struct type: {parent}")
+
+            parent_id = parent_field.field_id
+
+            try:
+                exist_field = self._schema.find_field(parent + "." + name, self._case_sensitive)
+            except ValueError:
+                pass
+
+            if exist_field:
+                raise ValueError(f"Cannot add column, name already exists: {parent}.{name}")
+
+            full_name = parent_field.name + "." + name
+
+        else:
+            try:
+                exist_field = self._schema.find_field(name, self._case_sensitive)
+            except ValueError:
+                pass
+
+            if exist_field:
+                raise ValueError(f"Cannot add column, name already exists: {name}")
+
+        # assign new IDs in order
+        new_id = self.assign_new_column_id()
+
+        # update tracking for moves
+        self._added_name_to_id[full_name] = new_id
+
+        new_type = assign_fresh_schema_ids(type_var, self.assign_new_column_id)
+        field = NestedField(new_id, name, new_type, not is_optional, doc)
+
+        self._adds.setdefault(parent_id, []).append(field)
+
+    def assign_new_column_id(self) -> int:
+        next_ = self._last_column_id + 1
+        self._last_column_id = next_
+        return next_
+
+
+def apply_changes(schema_: Schema, adds: Dict[int, List[NestedField]], identifier_field_names: List[str]) -> Schema:
+    struct = visit(schema_, _ApplyChanges(adds))
+    name_to_id: Dict[str, int] = index_by_name(struct)
+    for name in identifier_field_names:
+        if name not in name_to_id:
+            raise ValueError(f"Cannot add field {name} as an identifier field: not found in current schema or added columns")
+
+    return Schema(*struct.fields)
+
+
+class _ApplyChanges(SchemaVisitor[IcebergType]):
+    def __init__(self, adds: Dict[int, List[NestedField]]):
+        self.adds = adds
+
+    def schema(self, schema: Schema, struct_result: IcebergType) -> IcebergType:
+        fields = _ApplyChanges.add_fields(schema.as_struct().fields, self.adds.get(TABLE_ROOT_ID))
+        if len(fields) > 0:
+            return StructType(*fields)
+
+        return struct_result
+
+    def struct(self, struct: StructType, field_results: List[IcebergType]) -> IcebergType:
+        has_change = False
+        new_fields: List[NestedField] = []
+        for i in range(len(field_results)):
+            type_: Optional[IcebergType] = field_results[i]
+            if type_ is None:
+                has_change = True
+                continue
+
+            field: NestedField = struct.fields[i]
+            new_fields.append(field)
+
+        if has_change:
+            return StructType(*new_fields)
+
+        return struct
+
+    def field(self, field: NestedField, field_result: IcebergType) -> IcebergType:
+        field_id: int = field.field_id
+        if field_id in self.adds:
+            new_fields = self.adds[field_id]
+            if len(new_fields) != 0:
+                fields = _ApplyChanges.add_fields(field_result.fields, new_fields)
+                if len(fields) > 0:
+                    return StructType(*fields)
+
+        return field_result
+
+    def list(self, list_type: ListType, element_result: IcebergType) -> IcebergType:
+        element_field: NestedField = list_type.element_field
+        element_type = self.field(element_field, element_result)
+        if element_type is None:
+            raise ValueError(f"Cannot delete element type from list: {element_field}")
+
+        is_element_optional = not list_type.element_required
+
+        if is_element_optional == element_field.required and list_type.element_type == element_type:
+            return list_type
+
+        return ListType(list_type.element_id, element_type, is_element_optional)
+
+    def map(self, map_type: MapType, key_result: IcebergType, value_result: IcebergType) -> IcebergType:
+        key_id: int = map_type.key_field.field_id
+        if key_id in self.adds:
+            raise ValueError(f"Cannot add fields to map keys: {map_type}")
+
+        value_field: NestedField = map_type.value_field
+        value_type = self.field(value_field, value_result)
+        if value_type is None:
+            raise ValueError(f"Cannot delete value type from map: {value_field}")
+
+        is_value_optional = not map_type.value_required
+
+        if is_value_optional != value_field.required and map_type.value_type == value_type:
+            return map_type
+
+        return MapType(map_type.key_id, map_type.key_field, map_type.value_id, value_type, not is_value_optional)
+
+    def primitive(self, primitive: PrimitiveType) -> IcebergType:
+        return primitive
+
+    @staticmethod
+    def add_fields(fields: Tuple[NestedField, ...], adds: Optional[List[NestedField]]) -> List[NestedField]:
+        new_fields: List[NestedField] = []
+        new_fields.extend(fields)
+        if adds:
+            new_fields.extend(adds)
+        return new_fields

@@ -351,16 +351,29 @@ quux: map<string, map<string, int32>> not null
       field_id: '8'
   -- field metadata --
   field_id: '6'
-location: list<element: struct<latitude: float, longitude: float> not null> not null
-  child 0, element: struct<latitude: float, longitude: float> not null
-      child 0, latitude: float
+location: map<struct<address: string, city: string, zip: int32>, struct<latitude: float, longitude: float>> not null
+  child 0, entries: struct<key: struct<address: string, city: string, zip: int32> not null, value: struct<latitude: float, longitude: float> not null> not null
+      child 0, key: struct<address: string, city: string, zip: int32> not null
+          child 0, address: string
+        -- field metadata --
+        field_id: '21'
+          child 1, city: string
+        -- field metadata --
+        field_id: '22'
+          child 2, zip: int32
+        -- field metadata --
+        field_id: '23'
       -- field metadata --
-      field_id: '13'
-      child 1, longitude: float
+      field_id: '18'
+      child 1, value: struct<latitude: float, longitude: float> not null
+          child 0, latitude: float
+        -- field metadata --
+        field_id: '13'
+          child 1, longitude: float
+        -- field metadata --
+        field_id: '14'
       -- field metadata --
-      field_id: '14'
-    -- field metadata --
-    field_id: '12'
+      field_id: '19'
   -- field metadata --
   field_id: '11'
 person: struct<name: string, age: int32 not null>

@@ -48,16 +48,11 @@ from pyiceberg.table import (
     CommitTableResponse,
     Table,
 )
-from pyiceberg.table.metadata import TableMetadataV1, new_table_metadata
+from pyiceberg.table.metadata import TableMetadata, TableMetadataV1, new_table_metadata
 from pyiceberg.table.sorting import UNSORTED_SORT_ORDER, SortOrder
 from pyiceberg.transforms import IdentityTransform
 from pyiceberg.typedef import EMPTY_DICT
-from pyiceberg.types import (
-    PRIMITIVE_TYPES,
-    IntegerType,
-    LongType,
-    NestedField,
-)
+from pyiceberg.types import IntegerType, LongType, NestedField
 
 
 class InMemoryCatalog(Catalog):
@@ -115,6 +110,8 @@ class InMemoryCatalog(Catalog):
             return table
 
     def _commit_table(self, table_request: CommitTableRequest) -> CommitTableResponse:
+        new_metadata: Optional[TableMetadata] = None
+        metadata_location = ""
         for update in table_request.updates:
             if isinstance(update, AddSchemaUpdate):
                 add_schema_update: AddSchemaUpdate = update
@@ -126,6 +123,7 @@ class InMemoryCatalog(Catalog):
                     table.sort_order(),
                     table.location(),
                     table.properties,
+                    table.metadata.table_uuid,
                 )
 
                 table = Table(
@@ -139,9 +137,9 @@ class InMemoryCatalog(Catalog):
                 self.__tables[identifier] = table
                 metadata_location = f's3://warehouse/{"/".join(identifier)}/metadata/metadata.json'
 
-                return CommitTableResponse(metadata=new_metadata.dict(), metadata_location=metadata_location)
-
-        return CommitTableResponse(metadata={}, metadata_location="")
+        return CommitTableResponse(
+            metadata=new_metadata.dict() if new_metadata else {}, metadata_location=metadata_location if metadata_location else ""
+        )
 
     def load_table(self, identifier: Union[str, Identifier]) -> Table:
         identifier = Catalog.identifier_to_tuple(identifier)
@@ -327,51 +325,6 @@ def test_create_table(catalog: InMemoryCatalog) -> None:
     assert catalog.load_table(TEST_TABLE_IDENTIFIER) == table
 
 
-def test_add_column(catalog: InMemoryCatalog) -> None:
-    # Given
-    given_table = given_catalog_has_a_table(catalog)
-    field_name = "new_column"
-
-    # When
-    table: Table = given_table.transaction().add_column(name=field_name, type_var=IntegerType(), doc="doc").commit_transaction()
-    field: NestedField = table.schema().find_field(field_name)
-
-    # Then
-    assert field.field_type == IntegerType()
-
-
-def test_add_multi_column(catalog: InMemoryCatalog) -> None:
-    # Given
-    given_table = given_catalog_has_a_table(catalog)
-    field_name1 = "new_column1"
-    field_name2 = "new_column2"
-
-    # When
-    table: Table = (
-        given_table.transaction()
-        .add_column(name=field_name1, type_var=IntegerType(), doc="doc")
-        .add_column(name=field_name2, type_var=LongType(), doc="doc")
-        .commit_transaction()
-    )
-    field1: NestedField = table.schema().find_field(field_name1)
-    field2: NestedField = table.schema().find_field(field_name2)
-
-    # Then
-    assert field1.field_type == IntegerType()
-    assert field2.field_type == LongType()
-
-
-def test_add_primitive_type_column(catalog: InMemoryCatalog) -> None:
-    given_table = given_catalog_has_a_table(catalog)
-
-    for name, type_ in PRIMITIVE_TYPES.items():
-        field_name = f"new_column_{name}"
-        given_table = given_table.transaction().add_column(name=field_name, type_var=type_, doc="doc").commit_transaction()
-
-        field: NestedField = given_table.schema().find_field(field_name)
-        assert field.field_type == type_
-
-
 def test_create_table_raises_error_when_table_already_exists(catalog: InMemoryCatalog) -> None:
     # Given
     given_catalog_has_a_table(catalog)
@@ -555,3 +508,48 @@ def test_update_namespace_metadata_removals(catalog: InMemoryCatalog) -> None:
 def test_update_namespace_metadata_raises_error_when_namespace_does_not_exist(catalog: InMemoryCatalog) -> None:
     with pytest.raises(NoSuchNamespaceError, match=NO_SUCH_NAMESPACE_ERROR):
         catalog.update_namespace_properties(TEST_TABLE_NAMESPACE, updates=TEST_TABLE_PROPERTIES)
+
+
+def test_commit_table(catalog: InMemoryCatalog) -> None:
+    # Given
+    given_table = given_catalog_has_a_table(catalog)
+    new_schema = Schema(
+        NestedField(1, "x", LongType()),
+        NestedField(2, "y", LongType(), doc="comment"),
+        NestedField(3, "z", LongType()),
+        NestedField(4, "add", LongType()),
+    )
+
+    # When
+    response = given_table.catalog._commit_table(  # pylint: disable=W0212
+        CommitTableRequest(
+            identifier=given_table.identifier[1:],
+            updates=[AddSchemaUpdate(schema=new_schema)],
+        )
+    )
+
+    # Then
+    assert response.metadata.table_uuid == given_table.metadata.table_uuid
+    assert len(response.metadata.schemas) == 1
+    assert response.metadata.schemas[0] == new_schema
+
+
+def test_add_column(catalog: InMemoryCatalog) -> None:
+    # Given
+    given_table = given_catalog_has_a_table(catalog)
+    field_name1 = "new_column1"
+    field_name2 = "new_column2"
+
+    # When
+    table: Table = (
+        given_table.transaction()
+        .add_column(name=field_name1, type_var=IntegerType(), doc="doc")
+        .add_column(name=field_name2, type_var=LongType())
+        .commit_transaction()
+    )
+
+    # Then
+    assert table.schema().find_field(field_name1).name == field_name1
+    assert table.schema().find_field(field_name1).field_type == IntegerType()
+    assert table.schema().find_field(field_name2).name == field_name2
+    assert table.schema().find_field(field_name2).field_type == LongType()

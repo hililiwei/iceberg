@@ -368,6 +368,9 @@ def new_table_metadata(
     fresh_partition_spec = assign_fresh_partition_spec_ids(partition_spec, schema, fresh_schema)
     fresh_sort_order = assign_fresh_sort_order_ids(sort_order, schema, fresh_schema)
 
+    if table_uuid is None:
+        table_uuid = uuid.uuid4()
+
     return TableMetadataV2(
         location=location,
         schemas=[fresh_schema],

@@ -706,36 +706,32 @@ def test_schema_select_cant_be_found(table_schema_nested: Schema) -> None:
     assert "Could not find column: 'BAZ'" in str(exc_info.value)
 
 
-def test_add_column() -> None:
-    schema_ = Schema(
-        NestedField(field_id=1, name="a", field_type=BooleanType(), required=False), schema_id=1, identifier_field_ids=[]
-    )
-
-    update = SchemaUpdate(schema_, 1)
+def test_add_column(table_schema_simple: Schema) -> None:
+    update = SchemaUpdate(table_schema_simple)
     update.add_column(name="b", type_var=IntegerType())
     apply_schema: Schema = update.apply()
-    assert len(apply_schema.fields) == 2
-    assert apply_schema.fields == (
-        NestedField(field_id=1, name="a", field_type=BooleanType(), required=False),
-        NestedField(field_id=2, name="b", field_type=IntegerType(), required=False),
+    assert len(apply_schema.fields) == 4
+
+    assert apply_schema == Schema(
+        NestedField(field_id=1, name="foo", field_type=StringType(), required=False),
+        NestedField(field_id=2, name="bar", field_type=IntegerType(), required=True),
+        NestedField(field_id=3, name="baz", field_type=BooleanType(), required=False),
+        NestedField(field_id=4, name="b", field_type=IntegerType(), required=False),
     )
     assert apply_schema.schema_id == 0
-    assert apply_schema.highest_field_id == 2
+    assert apply_schema.highest_field_id == 4
 
 
-def test_add_primitive_type_column() -> None:
-    schema_ = Schema(
-        NestedField(field_id=1, name="a", field_type=BooleanType(), required=False), schema_id=1, identifier_field_ids=[]
-    )
-
+def test_add_primitive_type_column(table_schema_simple: Schema) -> None:
     for name, type_ in PRIMITIVE_TYPES.items():
         field_name = f"new_column_{name}"
-        update = SchemaUpdate(schema_, schema_.highest_field_id)
-        update.add_column(parent=None, name=field_name, type_var=type_, doc="doc")
-        schema_ = update.apply()
+        update = SchemaUpdate(table_schema_simple)
+        update.add_column(parent=None, name=field_name, type_var=type_, doc=f"new_column_{name}")
+        new_schema = update.apply()
 
-        field: NestedField = schema_.find_field(field_name)
+        field: NestedField = new_schema.find_field(field_name)
         assert field.field_type == type_
+        assert field.doc == f"new_column_{name}"
 
 
 def test_add_nested_type_column(table_schema_simple: Schema) -> None:
@@ -759,19 +755,19 @@ def test_add_nested_type_column(table_schema_simple: Schema) -> None:
 def test_add_nested_map_type_column(table_schema_simple: Schema) -> None:
     # add map type column
     field_name = "new_column_map"
-    new_schema = SchemaUpdate(table_schema_simple, table_schema_simple.highest_field_id)
+    update = SchemaUpdate(table_schema_simple, table_schema_simple.highest_field_id)
     map_ = MapType(1, StringType(), 2, IntegerType(), False)
-    new_schema.add_column(parent=None, name=field_name, type_var=map_)
-    schema_ = new_schema.apply()
-    field: NestedField = schema_.find_field(field_name)
+    update.add_column(parent=None, name=field_name, type_var=map_)
+    new_schema = update.apply()
+    field: NestedField = new_schema.find_field(field_name)
     assert field.field_type == MapType(5, StringType(), 6, IntegerType(), False)
-    assert schema_.highest_field_id == 6
+    assert new_schema.highest_field_id == 6
 
 
 def test_add_nested_list_type_column(table_schema_simple: Schema) -> None:
     # add list type column
     field_name = "new_column_list"
-    new_schema = SchemaUpdate(table_schema_simple, table_schema_simple.highest_field_id)
+    update = SchemaUpdate(table_schema_simple, table_schema_simple.highest_field_id)
     list_ = ListType(
         element_id=101,
         element_type=StructType(
@@ -780,8 +776,8 @@ def test_add_nested_list_type_column(table_schema_simple: Schema) -> None:
         ),
         element_required=False,
     )
-    new_schema.add_column(parent=None, name=field_name, type_var=list_)
-    new_schema = new_schema.apply()
+    update.add_column(parent=None, name=field_name, type_var=list_)
+    new_schema = update.apply()
     field: NestedField = new_schema.find_field(field_name)
     assert field.field_type == ListType(
         element_id=5,
@@ -830,10 +826,10 @@ def test_add_required_column() -> None:
         update.add_required_column(name="data", type_var=IntegerType())
     assert "Incompatible change: cannot add required column: data" in str(exc_info.value)
 
-    schema_ = (
+    new_schema = (
         SchemaUpdate(schema_, 1).allow_incompatible_changes().add_required_column(name="data", type_var=IntegerType()).apply()
     )
-    assert schema_ == Schema(
+    assert new_schema == Schema(
         NestedField(field_id=1, name="a", field_type=BooleanType(), required=False),
         NestedField(field_id=2, name="data", field_type=IntegerType(), required=True),
         schema_id=0,
@@ -851,8 +847,10 @@ def test_add_required_column_case_insensitive() -> None:
         update.allow_incompatible_changes().case_sensitive(False).add_required_column(name="ID", type_var=IntegerType())
     assert "already exists: ID" in str(exc_info.value)
 
-    schema_ = SchemaUpdate(schema_, 1).allow_incompatible_changes().add_required_column(name="ID", type_var=IntegerType()).apply()
-    assert schema_ == Schema(
+    new_schema = (
+        SchemaUpdate(schema_, 1).allow_incompatible_changes().add_required_column(name="ID", type_var=IntegerType()).apply()
+    )
+    assert new_schema == Schema(
         NestedField(field_id=1, name="id", field_type=BooleanType(), required=False),
         NestedField(field_id=2, name="ID", field_type=IntegerType(), required=True),
         schema_id=0,

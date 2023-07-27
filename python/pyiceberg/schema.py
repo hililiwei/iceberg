@@ -1599,7 +1599,7 @@ class _ApplyChanges(SchemaVisitor[IcebergType]):
         field_id: int = field.field_id
         if field_id in self.adds:
             new_fields = self.adds[field_id]
-            if len(new_fields) != 0:
+            if len(new_fields) > 0:
                 fields = _ApplyChanges.add_fields(field_result.fields, new_fields)
                 if len(fields) > 0:
                     return StructType(*fields)

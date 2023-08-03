@@ -265,7 +265,7 @@ def test_round_schema_conversion_nested(table_schema_nested: Schema) -> None:
   3: baz: optional boolean
   4: qux: required list<string>
   6: quux: required map<string, map<string, int>>
-  11: location: required map<struct<21: address: optional string, 22: city: optional string, 23: zip: optional int>, struct<13: latitude: optional float, 14: longitude: optional float>>
+  11: location: required list<struct<13: latitude: optional float, 14: longitude: optional float>>
   15: person: optional struct<16: name: optional string, 17: age: required int>
 }"""
     assert actual == expected

@@ -541,12 +541,38 @@ def test_add_column(catalog: InMemoryCatalog) -> None:
     field_name2 = "new_column2"
 
     # When
-    table: Table = (
-        given_table.transaction()
+    (
+        given_table.update_schema()
         .add_column(name=field_name1, type_var=IntegerType(), doc="doc")
         .add_column(name=field_name2, type_var=LongType())
-        .commit_transaction()
+        .commit()
     )
+
+    table: Table = catalog.load_table(TEST_TABLE_IDENTIFIER[1:])
+
+    # Then
+    assert table.schema().find_field(field_name1).name == field_name1
+    assert table.schema().find_field(field_name1).field_type == IntegerType()
+    assert table.schema().find_field(field_name2).name == field_name2
+    assert table.schema().find_field(field_name2).field_type == LongType()
+
+
+def test_add_column_via_transaction(catalog: InMemoryCatalog) -> None:
+    # Given
+    given_table = given_catalog_has_a_table(catalog)
+    field_name1 = "new_column1"
+    field_name2 = "new_column2"
+
+    # When
+    (
+        given_table.transaction()
+        .update_schema()
+        .add_column(name=field_name1, type_var=IntegerType(), doc="doc")
+        .add_column(name=field_name2, type_var=LongType())
+        .commit()
+    )
+
+    table: Table = catalog.load_table(TEST_TABLE_IDENTIFIER[1:])
 
     # Then
     assert table.schema().find_field(field_name1).name == field_name1

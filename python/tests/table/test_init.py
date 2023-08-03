@@ -430,8 +430,8 @@ def test_add_nested_type_column(table_schema_simple: Schema) -> None:
     field_name = "new_column_struct"
     update = _SchemaUpdate(table_schema_simple, last_column_id=table_schema_simple.highest_field_id)
     struct_ = StructType(
-        NestedField(4, "lat", DoubleType()),
-        NestedField(5, "long", DoubleType()),
+        NestedField(1, "lat", DoubleType()),
+        NestedField(2, "long", DoubleType()),
     )
     update.add_column(parent=None, name=field_name, type_var=struct_)
     schema_ = update.apply()

@@ -16,6 +16,7 @@
 # under the License.
 from __future__ import annotations
 
+import itertools
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -62,7 +63,6 @@ from pyiceberg.partitioning import PartitionSpec
 from pyiceberg.schema import (
     Schema,
     SchemaVisitor,
-    UpdateSchema,
     assign_fresh_schema_ids,
     index_by_name,
     visit,
@@ -174,7 +174,7 @@ class Transaction:
         Returns:
             A new UpdateSchema.
         """
-        return _SchemaUpdate(self._table.metadata.schema_, self._table)
+        return UpdateSchema(self._table.metadata.schema_, self._table)
 
     def remove_properties(self, *removals: str) -> Transaction:
         """Removes properties.
@@ -507,7 +507,7 @@ class Table:
         return self.metadata.snapshot_log
 
     def update_schema(self) -> UpdateSchema:
-        return _SchemaUpdate(self.schema(), self)
+        return UpdateSchema(self.schema(), self)
 
     def __eq__(self, other: Any) -> bool:
         """Returns the equality of two instances of the Table class."""
@@ -870,14 +870,14 @@ class DataScan(TableScan):
         return ray.data.from_arrow(self.to_arrow())
 
 
-class _SchemaUpdate(UpdateSchema):
+class UpdateSchema:
     def __init__(self, schema: Schema, table: Optional[Table] = None, last_column_id: Optional[int] = None):
         self._table = table
         self._schema = schema
         if last_column_id:
-            self._last_column_id = last_column_id
+            self._last_column_id = itertools.count(last_column_id + 1)
         else:
-            self._last_column_id = schema.highest_field_id
+            self._last_column_id = itertools.count(schema.highest_field_id + 1)
 
         self._identifier_field_names = schema.column_names
         self._adds: Dict[int, List[NestedField]] = {}
@@ -886,39 +886,62 @@ class _SchemaUpdate(UpdateSchema):
         self._allow_incompatible_changes: bool = False
         self._case_sensitive: bool = True
 
+    def __exit__(self, _: Any, value: Any, traceback: Any) -> None:
+        """Closes and commits the change."""
+        return self.commit()
+
+    def __enter__(self) -> UpdateSchema:
+        """Update the table."""
+        return self
+
     def case_sensitive(self, case_sensitive: bool) -> UpdateSchema:
+        """Determines if the case of schema needs to be considered when comparing column names.
+
+        Args:
+            case_sensitive: When false case is not considered in column name comparisons.
+
+        Returns:
+            This for method chaining
+        """
         self._case_sensitive = case_sensitive
         return self
 
     def add_column(
-        self, name: str, type_var: IcebergType, doc: Optional[str] = None, parent: Optional[str] = None
+        self, name: str, type_var: IcebergType, doc: Optional[str] = None, parent: Optional[str] = None, required: bool = False
     ) -> UpdateSchema:
+        """Add a new column to a nested struct or Add a new top-level column.
+
+        Args:
+            name: Name for the new column.
+            type_var: Type for the new column.
+            doc: Documentation string for the new column.
+            parent: Name of the parent struct to the column will be added to.
+            required: Whether the new column is required.
+
+        Returns:
+            This for method chaining
+        """
         if "." in name:
             raise ValueError(f"Cannot add column with ambiguous name: {name}")
 
-        self._internal_add_column(parent, name, True, type_var, doc)
-        return self
-
-    def add_required_column(
-        self, name: str, type_var: IcebergType, doc: Optional[str] = None, parent: Optional[str] = None
-    ) -> UpdateSchema:
-        if "." in name:
-            raise ValueError(f"Cannot add column with ambiguous name: {name}")
-
-        if not self._allow_incompatible_changes:
+        if required and not self._allow_incompatible_changes:
+            # Table format version 1 and 2 cannot add required column because there is no initial value
             raise ValueError(f"Incompatible change: cannot add required column: {name}")
 
-        self._internal_add_column(parent, name, False, type_var, doc)
+        self._internal_add_column(parent, name, not required, type_var, doc)
         return self
 
     def allow_incompatible_changes(self) -> UpdateSchema:
+        """Allow incompatible changes to the schema.
+
+        Returns:
+            This for method chaining
+        """
         self._allow_incompatible_changes = True
         return self
 
-    def apply(self) -> Schema:
-        return _apply_changes(self._schema, self._adds, self._identifier_field_names)
-
     def commit(self) -> None:
+        """Apply the pending changes and commit."""
         if self._table is None:
             raise ValueError("Cannot commit schema update, table is not set")
 
@@ -926,9 +949,17 @@ class _SchemaUpdate(UpdateSchema):
         self._table.catalog._commit_table(  # pylint: disable=W0212
             CommitTableRequest(
                 identifier=self._table.identifier[1:],
-                updates=[AddSchemaUpdate(schema=self.apply())],
+                updates=[AddSchemaUpdate(schema=self._apply())],
             )
         )
+
+    def _apply(self) -> Schema:
+        """Apply the pending changes to the original schema and returns the result.
+
+        Returns:
+            the result Schema when all pending updates are applied
+        """
+        return _apply_changes(self._schema, self._adds, self._identifier_field_names)
 
     def _internal_add_column(
         self, parent: Optional[str], name: str, is_optional: bool, type_var: IcebergType, doc: Optional[str]
@@ -981,9 +1012,7 @@ class _SchemaUpdate(UpdateSchema):
         self._adds.setdefault(parent_id, []).append(field)
 
     def assign_new_column_id(self) -> int:
-        next_ = self._last_column_id + 1
-        self._last_column_id = next_
-        return next_
+        return next(self._last_column_id)
 
 
 def _apply_changes(schema_: Schema, adds: Dict[int, List[NestedField]], identifier_field_names: List[str]) -> Schema:

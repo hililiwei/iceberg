@@ -524,7 +524,7 @@ def test_commit_table(catalog: InMemoryCatalog) -> None:
     response = given_table.catalog._commit_table(  # pylint: disable=W0212
         CommitTableRequest(
             identifier=given_table.identifier[1:],
-            updates=[AddSchemaUpdate(schema=new_schema)],
+            updates=[AddSchemaUpdate(schema=new_schema, last_column_id=new_schema.highest_field_id)],
         )
     )
 

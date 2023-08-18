@@ -37,10 +37,12 @@ from pyiceberg.schema import Schema
 from pyiceberg.table import Table
 from pyiceberg.types import (
     BooleanType,
+    FixedType,
     IntegerType,
     NestedField,
     StringType,
     TimestampType,
+    UUIDType,
 )
 
 
@@ -315,3 +317,41 @@ def test_partitioned_tables(catalog: Catalog) -> None:
         table = catalog.load_table(f"default.{table_name}")
         arrow_table = table.scan(selected_fields=("number",), row_filter=predicate).to_arrow()
         assert set(arrow_table["number"].to_pylist()) == {5, 6, 7, 8, 9, 10, 11, 12}, f"Table {table_name}, predicate {predicate}"
+
+
+@pytest.mark.integration
+def test_schema_evolution(catalog: Catalog) -> None:
+    try:
+        catalog.drop_table("default.test_schema_evolution")
+    except NoSuchTableError:
+        pass
+
+    schema = Schema(
+        NestedField(field_id=1, name="col_uuid", field_type=UUIDType(), required=False),
+        NestedField(field_id=2, name="col_fixed", field_type=FixedType(25), required=False),
+    )
+
+    t = catalog.create_table(identifier="default.test_schema_evolution", schema=schema)
+
+    assert t.schema() == schema
+
+    with t.update_schema() as tx:
+        tx.add_column("col_string", StringType())
+
+    assert t.schema() == Schema(
+        NestedField(field_id=1, name="col_uuid", field_type=UUIDType(), required=False),
+        NestedField(field_id=2, name="col_fixed", field_type=FixedType(25), required=False),
+        NestedField(field_id=3, name="col_string", field_type=StringType(), required=False),
+        schema_id=1,
+    )
+
+    with t.transaction() as tx:
+        tx.update_schema().add_column("col_int", IntegerType()).commit()
+
+    assert t.schema() == Schema(
+        NestedField(field_id=1, name="col_uuid", field_type=UUIDType(), required=False),
+        NestedField(field_id=2, name="col_fixed", field_type=FixedType(25), required=False),
+        NestedField(field_id=3, name="col_string", field_type=StringType(), required=False),
+        NestedField(field_id=4, name="col_int", field_type=IntegerType(), required=False),
+        schema_id=2,
+    )

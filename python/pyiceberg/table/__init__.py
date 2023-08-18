@@ -251,6 +251,7 @@ class UpgradeFormatVersionUpdate(TableUpdate):
 class AddSchemaUpdate(TableUpdate):
     action: TableUpdateAction = TableUpdateAction.add_schema
     schema_: Schema = Field(alias="schema")
+    last_column_id: int = Field(alias="last-column-id")
 
 
 class SetCurrentSchemaUpdate(TableUpdate):
@@ -331,13 +332,13 @@ class TableRequirement(IcebergBaseModel):
 class AssertCreate(TableRequirement):
     """The table must not already exist; used for create transactions."""
 
-    type: Literal["assert-create"]
+    type: Literal["assert-create"] = Field(default="assert-create")
 
 
 class AssertTableUUID(TableRequirement):
     """The table UUID must match the requirement's `uuid`."""
 
-    type: Literal["assert-table-uuid"]
+    type: Literal["assert-table-uuid"] = Field(default="assert-table-uuid")
     uuid: str
 
 
@@ -347,7 +348,7 @@ class AssertRefSnapshotId(TableRequirement):
     if `snapshot-id` is `null` or missing, the ref must not already exist.
     """
 
-    type: Literal["assert-ref-snapshot-id"]
+    type: Literal["assert-ref-snapshot-id"] = Field(default="assert-ref-snapshot-id")
     ref: str
     snapshot_id: int = Field(..., alias="snapshot-id")
 
@@ -355,35 +356,35 @@ class AssertRefSnapshotId(TableRequirement):
 class AssertLastAssignedFieldId(TableRequirement):
     """The table's last assigned column id must match the requirement's `last-assigned-field-id`."""
 
-    type: Literal["assert-last-assigned-field-id"]
+    type: Literal["assert-last-assigned-field-id"] = Field(default="assert-last-assigned-field-id")
     last_assigned_field_id: int = Field(..., alias="last-assigned-field-id")
 
 
 class AssertCurrentSchemaId(TableRequirement):
     """The table's current schema id must match the requirement's `current-schema-id`."""
 
-    type: Literal["assert-current-schema-id"]
+    type: Literal["assert-current-schema-id"] = Field(default="assert-current-schema-id")
     current_schema_id: int = Field(..., alias="current-schema-id")
 
 
 class AssertLastAssignedPartitionId(TableRequirement):
     """The table's last assigned partition id must match the requirement's `last-assigned-partition-id`."""
 
-    type: Literal["assert-last-assigned-partition-id"]
+    type: Literal["assert-last-assigned-partition-id"] = Field(default="assert-last-assigned-partition-id")
     last_assigned_partition_id: int = Field(..., alias="last-assigned-partition-id")
 
 
 class AssertDefaultSpecId(TableRequirement):
     """The table's default spec id must match the requirement's `default-spec-id`."""
 
-    type: Literal["assert-default-spec-id"]
+    type: Literal["assert-default-spec-id"] = Field(default="assert-default-spec-id")
     default_spec_id: int = Field(..., alias="default-spec-id")
 
 
 class AssertDefaultSortOrderId(TableRequirement):
     """The table's default sort order id must match the requirement's `default-sort-order-id`."""
 
-    type: Literal["assert-default-sort-order-id"]
+    type: Literal["assert-default-sort-order-id"] = Field(default="assert-default-sort-order-id")
     default_sort_order_id: int = Field(..., alias="default-sort-order-id")
 
 
@@ -871,22 +872,29 @@ class DataScan(TableScan):
 
 
 class UpdateSchema:
-    def __init__(self, schema: Schema, table: Optional[Table] = None, last_column_id: Optional[int] = None):
+    _table: Table
+    _schema: Schema
+    _last_column_id: itertools.count[int]
+    _identifier_field_names: List[str]
+    _adds: Dict[int, List[NestedField]]
+    _added_name_to_id: Dict[str, int]
+    _id_to_parent: Dict[int, str]
+    _allow_incompatible_changes: bool
+    _case_sensitive: bool
+
+    def __init__(self, schema: Schema, table: Table):
         self._table = table
         self._schema = schema
-        if last_column_id:
-            self._last_column_id = itertools.count(last_column_id + 1)
-        else:
-            self._last_column_id = itertools.count(schema.highest_field_id + 1)
+        self._last_column_id = itertools.count(schema.highest_field_id + 1)
 
         self._identifier_field_names = schema.column_names
-        self._adds: Dict[int, List[NestedField]] = {}
-        self._added_name_to_id: Dict[str, int] = {}
-        self._id_to_parent: Dict[int, str] = {}
-        self._allow_incompatible_changes: bool = False
-        self._case_sensitive: bool = True
+        self._adds = {}
+        self._added_name_to_id = {}
+        self._id_to_parent = {}
+        self._allow_incompatible_changes = False
+        self._case_sensitive = True
 
-    def __exit__(self, _: Any, value: Any, traceback: Any) -> None:
+    def __exit__(self, _: Any, value: Any, traceback: Any) -> Table:
         """Closes and commits the change."""
         return self.commit()
 
@@ -940,18 +948,24 @@ class UpdateSchema:
         self._allow_incompatible_changes = True
         return self
 
-    def commit(self) -> None:
+    def commit(self) -> Table:
         """Apply the pending changes and commit."""
-        if self._table is None:
-            raise ValueError("Cannot commit schema update, table is not set")
-
-        # Strip the catalog name
-        self._table.catalog._commit_table(  # pylint: disable=W0212
+        new_schema = self._apply()
+        table_update_response = self._table.catalog._commit_table(  # pylint: disable=W0212
             CommitTableRequest(
-                identifier=self._table.identifier[1:],
-                updates=[AddSchemaUpdate(schema=self._apply())],
-            )
+                identifier=self._table.identifier[1:],  # Strip the catalog name
+                requirements=[AssertCurrentSchemaId(current_schema_id=self._table.metadata.current_schema_id)],
+                updates=[
+                    AddSchemaUpdate(schema=new_schema, last_column_id=new_schema.highest_field_id),
+                    SetCurrentSchemaUpdate(schema_id=-1),
+                ],
+            ),
         )
+
+        self._table.metadata = table_update_response.metadata
+        self._table.metadata_location = table_update_response.metadata_location
+
+        return self._table
 
     def _apply(self) -> Schema:
         """Apply the pending changes to the original schema and returns the result.

@@ -29,8 +29,14 @@ public class SparkReadOptions {
   // Start snapshot ID used in incremental scans (exclusive)
   public static final String START_SNAPSHOT_ID = "start-snapshot-id";
 
+  // Start snapshot ref used in incremental scans (exclusive)
+  public static final String START_TAG = "start-tag";
+
   // End snapshot ID used in incremental scans (inclusive)
   public static final String END_SNAPSHOT_ID = "end-snapshot-id";
+
+  // End snapshot ref used in incremental scans (inclusive)
+  public static final String END_TAG = "end-end";
 
   // Start timestamp used in multi-snapshot scans (exclusive)
   public static final String START_TIMESTAMP = "start-timestamp";

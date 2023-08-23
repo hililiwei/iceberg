@@ -88,8 +88,16 @@ public class SparkReadConf {
     return confParser.longConf().option(SparkReadOptions.START_SNAPSHOT_ID).parseOptional();
   }
 
+  public String startTag() {
+    return confParser.stringConf().option(SparkReadOptions.START_TAG).parseOptional();
+  }
+
   public Long endSnapshotId() {
     return confParser.longConf().option(SparkReadOptions.END_SNAPSHOT_ID).parseOptional();
+  }
+
+  public String endTag() {
+    return confParser.stringConf().option(SparkReadOptions.END_TAG).parseOptional();
   }
 
   public String branch() {

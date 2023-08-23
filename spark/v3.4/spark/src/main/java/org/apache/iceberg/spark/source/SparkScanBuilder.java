@@ -399,22 +399,28 @@ public class SparkScanBuilder
 
     Long startSnapshotId = readConf.startSnapshotId();
     Long endSnapshotId = readConf.endSnapshotId();
+    String startTag = readConf.startTag();
+    String endTag = readConf.endTag();
 
     if (snapshotId != null || asOfTimestamp != null) {
       Preconditions.checkArgument(
-          startSnapshotId == null && endSnapshotId == null,
-          "Cannot set %s and %s for incremental scans when either %s or %s is set",
+          startSnapshotId == null && endSnapshotId == null && startTag == null && endTag == null,
+          "Cannot set %s %s %s and %s for incremental scans when either %s or %s is set",
           SparkReadOptions.START_SNAPSHOT_ID,
+          SparkReadOptions.START_TAG,
           SparkReadOptions.END_SNAPSHOT_ID,
+          SparkReadOptions.END_TAG,
           SparkReadOptions.SNAPSHOT_ID,
           SparkReadOptions.AS_OF_TIMESTAMP);
     }
 
     Preconditions.checkArgument(
-        startSnapshotId != null || endSnapshotId == null,
-        "Cannot set only %s for incremental scans. Please, set %s too.",
+        (startSnapshotId != null || startTag != null) || (endSnapshotId == null || endTag == null),
+        "Cannot set only %s or %s for incremental scans. Please, set %s or %s too.",
         SparkReadOptions.END_SNAPSHOT_ID,
-        SparkReadOptions.START_SNAPSHOT_ID);
+        SparkReadOptions.END_TAG,
+        SparkReadOptions.START_SNAPSHOT_ID,
+        SparkReadOptions.START_TAG);
 
     Long startTimestamp = readConf.startTimestamp();
     Long endTimestamp = readConf.endTimestamp();
@@ -425,8 +431,20 @@ public class SparkScanBuilder
         SparkReadOptions.START_TIMESTAMP,
         SparkReadOptions.END_TIMESTAMP);
 
+    Preconditions.checkArgument(
+        startSnapshotId == null || startTag == null,
+        "%s and %s cannot both be set",
+        SparkReadOptions.START_TIMESTAMP,
+        SparkReadOptions.START_TAG);
+
+    Preconditions.checkArgument(
+        endSnapshotId == null || endTag == null,
+        "%s and %s cannot both be set",
+        SparkReadOptions.END_SNAPSHOT_ID,
+        SparkReadOptions.END_TAG);
+
     if (startSnapshotId != null) {
-      return buildIncrementalAppendScan(startSnapshotId, endSnapshotId);
+      return buildIncrementalAppendScan(startSnapshotId, endSnapshotId, startTag, endTag, branch);
     } else {
       return buildBatchScan(snapshotId, asOfTimestamp, branch, tag);
     }
@@ -471,19 +489,29 @@ public class SparkScanBuilder
         metricsReporter::scanReport);
   }
 
-  private Scan buildIncrementalAppendScan(long startSnapshotId, Long endSnapshotId) {
+  private Scan buildIncrementalAppendScan(
+      Long startSnapshotId, Long endSnapshotId, String startTag, String endTag, String branch) {
     Schema expectedSchema = schemaWithMetadataColumns();
 
-    IncrementalAppendScan scan =
-        table
-            .newIncrementalAppendScan()
-            .fromSnapshotExclusive(startSnapshotId)
-            .caseSensitive(caseSensitive)
-            .filter(filterExpression())
-            .project(expectedSchema);
+    IncrementalAppendScan scan = table.newIncrementalAppendScan();
+    if (startSnapshotId != null) {
+      scan = scan.fromSnapshotExclusive(startSnapshotId);
+    } else {
+      scan = scan.fromSnapshotExclusive(startTag);
+    }
+
+    scan = scan.caseSensitive(caseSensitive).filter(filterExpression()).project(expectedSchema);
 
     if (endSnapshotId != null) {
       scan = scan.toSnapshot(endSnapshotId);
+    }
+
+    if (endTag != null) {
+      scan = scan.toSnapshot(endTag);
+    }
+
+    if (branch != null) {
+      scan = scan.useBranch(branch);
     }
 
     scan = configureSplitPlanning(scan);

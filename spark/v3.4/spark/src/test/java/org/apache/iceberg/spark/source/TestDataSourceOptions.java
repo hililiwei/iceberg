@@ -272,7 +272,7 @@ public class TestDataSourceOptions extends SparkTestBaseWithCatalog {
                     .explain())
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage(
-            "Cannot set start-snapshot-id and end-snapshot-id for incremental scans when either snapshot-id or as-of-timestamp is set");
+            "Cannot set start-snapshot-id start-tag end-snapshot-id and end-end for incremental scans when either snapshot-id or as-of-timestamp is set");
 
     // only end-snapshot-id is configured.
     Assertions.assertThatThrownBy(
@@ -309,6 +309,173 @@ public class TestDataSourceOptions extends SparkTestBaseWithCatalog {
             .load(tableLocation);
     List<SimpleRecord> result1 =
         resultDf.orderBy("id").as(Encoders.bean(SimpleRecord.class)).collectAsList();
+    Assert.assertEquals("Records should match", expectedRecords.subList(2, 3), result1);
+    Assert.assertEquals("Unprocessed count should match record count", 1, resultDf.count());
+  }
+
+  @Test
+  public void testIncrementalScanRefOptionsFailure() throws IOException {
+    String tableLocation = temp.newFolder("iceberg-table").toString();
+    HadoopTables tables = new HadoopTables(CONF);
+    PartitionSpec spec = PartitionSpec.unpartitioned();
+    Map<String, String> options = Maps.newHashMap();
+    Table table = tables.create(SCHEMA, spec, options, tableLocation);
+
+    List<SimpleRecord> expectedRecords =
+        Lists.newArrayList(
+            new SimpleRecord(1, "a"),
+            new SimpleRecord(2, "b"),
+            new SimpleRecord(3, "c"),
+            new SimpleRecord(4, "d"));
+    for (SimpleRecord record : expectedRecords) {
+      Dataset<Row> originalDf =
+          spark.createDataFrame(Lists.newArrayList(record), SimpleRecord.class);
+      originalDf.select("id", "data").write().format("iceberg").mode("append").save(tableLocation);
+    }
+    List<Long> snapshotIds = SnapshotUtil.currentAncestorIds(table);
+
+    // start-tag and snapshot-id are both configured.
+    Assertions.assertThatThrownBy(
+            () ->
+                spark
+                    .read()
+                    .format("iceberg")
+                    .option("snapshot-id", snapshotIds.get(3).toString())
+                    .option("start-tag", "startTag")
+                    .load(tableLocation)
+                    .explain())
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage(
+            "Cannot set start-snapshot-id start-tag end-snapshot-id and end-end for incremental scans when either snapshot-id or as-of-timestamp is set");
+
+    // end-tag and as-of-timestamp are both configured.
+    Assertions.assertThatThrownBy(
+            () ->
+                spark
+                    .read()
+                    .format("iceberg")
+                    .option(
+                        SparkReadOptions.AS_OF_TIMESTAMP,
+                        Long.toString(table.snapshot(snapshotIds.get(3)).timestampMillis()))
+                    .option("end-tag", "endTag")
+                    .load(tableLocation)
+                    .explain())
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage(
+            "Cannot set start-snapshot-id start-tag end-snapshot-id and end-tag for incremental scans when either snapshot-id or as-of-timestamp is set");
+
+    // only end-tag is configured.
+    Assertions.assertThatThrownBy(
+            () ->
+                spark
+                    .read()
+                    .format("iceberg")
+                    .option("end-tag", "endTag")
+                    .load(tableLocation)
+                    .explain())
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage(
+            "Cannot set only end-snapshot-id for incremental scans. Please, set start-snapshot-id too.");
+  }
+
+  @Test
+  public void testIncrementalScanRefOptionsFailForBothStartTagAndSnapshotId() throws IOException {
+    String tableLocation = temp.newFolder("iceberg-table").toString();
+    HadoopTables tables = new HadoopTables(CONF);
+    PartitionSpec spec = PartitionSpec.unpartitioned();
+    Map<String, String> options = Maps.newHashMap();
+    tables.create(SCHEMA, spec, options, tableLocation);
+
+    // start-tag and snapshot-id are both configured.
+    Assertions.assertThatThrownBy(
+            () ->
+                spark
+                    .read()
+                    .format("iceberg")
+                    .option("start-snapshot-id", "1")
+                    .option("start-tag", "startTag")
+                    .load(tableLocation)
+                    .explain())
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage(
+            "Cannot set start-snapshot-id start-tag end-snapshot-id and end-end for incremental scans when either snapshot-id or as-of-timestamp is set");
+  }
+
+  @Test
+  public void testIncrementalScanWithRefOptions() throws IOException {
+    String tableLocation = temp.newFolder("iceberg-table").toString();
+
+    HadoopTables tables = new HadoopTables(CONF);
+    PartitionSpec spec = PartitionSpec.unpartitioned();
+    Map<String, String> options = Maps.newHashMap();
+    Table table = tables.create(SCHEMA, spec, options, tableLocation);
+
+    List<SimpleRecord> expectedRecords =
+        Lists.newArrayList(
+            new SimpleRecord(1, "a"),
+            new SimpleRecord(2, "b"),
+            new SimpleRecord(3, "c"),
+            new SimpleRecord(4, "d"));
+    for (SimpleRecord record : expectedRecords) {
+      Dataset<Row> originalDf =
+          spark.createDataFrame(Lists.newArrayList(record), SimpleRecord.class);
+      originalDf.select("id", "data").write().format("iceberg").mode("append").save(tableLocation);
+    }
+    List<Long> snapshotIds = SnapshotUtil.currentAncestorIds(table);
+
+    // test (1st snapshot tag, current snapshot] incremental scan.
+    String snapshot1Tag = "t1";
+    table.manageSnapshots().createTag(snapshot1Tag, snapshotIds.get(3)).commit();
+
+    List<SimpleRecord> result =
+        spark
+            .read()
+            .format("iceberg")
+            .option("start-tag", snapshot1Tag)
+            .load(tableLocation)
+            .orderBy("id")
+            .as(Encoders.bean(SimpleRecord.class))
+            .collectAsList();
+    Assert.assertEquals("Records should match", expectedRecords.subList(1, 4), result);
+
+    // test (2nd snapshot tag, 3rd snapshot tag] incremental scan.
+    String snapshot2Tag = "t1";
+    table.manageSnapshots().createTag(snapshot2Tag, snapshotIds.get(3)).commit();
+    String snapshot3Tag = "t2";
+    table.manageSnapshots().createTag(snapshot2Tag, snapshotIds.get(2)).commit();
+    Dataset<Row> resultDf =
+        spark
+            .read()
+            .format("iceberg")
+            .option("start-tag", snapshot2Tag)
+            .option("end-end", snapshot3Tag)
+            .load(tableLocation);
+    List<SimpleRecord> result1 =
+        resultDf.orderBy("id").as(Encoders.bean(SimpleRecord.class)).collectAsList();
+    Assert.assertEquals("Records should match", expectedRecords.subList(2, 3), result1);
+    Assert.assertEquals("Unprocessed count should match record count", 1, resultDf.count());
+
+    // test (2nd snapshot, 3rd snapshot tag] incremental scan.
+    resultDf =
+        spark
+            .read()
+            .format("iceberg")
+            .option("start-snapshot-id", snapshotIds.get(2).toString())
+            .option("end-end", snapshot3Tag)
+            .load(tableLocation);
+    result1 = resultDf.orderBy("id").as(Encoders.bean(SimpleRecord.class)).collectAsList();
+    Assert.assertEquals("Records should match", expectedRecords.subList(2, 3), result1);
+    Assert.assertEquals("Unprocessed count should match record count", 1, resultDf.count());
+
+    // test (2nd snapshot tag, 3rd snapshot] incremental scan.
+    resultDf =
+        spark
+            .read()
+            .format("iceberg")
+            .option("start-tag", snapshot2Tag)
+            .option("end-snapshot-id", snapshotIds.get(1).toString())
+            .load(tableLocation);
+    result1 = resultDf.orderBy("id").as(Encoders.bean(SimpleRecord.class)).collectAsList();
     Assert.assertEquals("Records should match", expectedRecords.subList(2, 3), result1);
     Assert.assertEquals("Unprocessed count should match record count", 1, resultDf.count());
   }
